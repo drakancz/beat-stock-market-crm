@@ -1,0 +1,375 @@
+name: crm-beatstockmarket
+
+services:
+  # Databáze. Port se ven nepublikuje — dostane se k ní jen aplikace
+  # uvnitř Dockeru. Když budeš potřebovat nahlédnout, spusť Prisma Studio
+  # (viz CLAUDE.md), ne otevřený port do internetu.
+  db:
+    image: postgres:18.6-trixie
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # Data se ukládají do podsložky, aby svazek zůstal prázdný pro Postgres.
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      # Aplikace nesmí naběhnout dřív, než databáze skutečně přijímá dotazy.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # Zachytávač pošty pro vývoj. Nic neodesílá ven — všechny zprávy skončí
+  # v jeho schránce na http://localhost:8025, kde si je můžeš přečíst.
+  # V produkci tahle služba neběží; tam se do SMTP_HOST zapíše skutečná
+  # odesílací služba.
+  mailpit:
+    image: axllent/mailpit:v1.28.4
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8025:8025"
+    environment:
+      MP_MAX_MESSAGES: "200"
+      # Bez tohohle se Mailpit váže jen na IPv6 a Docker Desktop na Windows
+      # ho pak z prohlížeče nepropojí — schránka vypadá jako nedostupná.
+      MP_UI_BIND_ADDR: "0.0.0.0:8025"
+      MP_SMTP_BIND_ADDR: "0.0.0.0:1025"
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+
+  # Místní úložiště souborů s rozhraním S3 (4. 10. 2026) — jen pro vývoj
+  # a testy. Na serveru tu roli hraje Cloudflare R2 v EU; aplikace mezi
+  # nimi nepozná rozdíl, mění se jen adresa a klíče. Klíče S3Mock nekontroluje,
+  # proto jsou níž zjevně vymyšlené. Ven se nepublikuje.
+  #   - `prilohy` / `zalohy`       — vývoj (soubory přežijí restart),
+  #   - `prilohy-test` / `zalohy-test` — automatické testy.
+  s3:
+    image: adobe/s3mock:5.2.3
+    restart: unless-stopped
+    environment:
+      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: "prilohy,zalohy,prilohy-test,zalohy-test"
+      COM_ADOBE_TESTING_S3MOCK_STORE_ROOT: /s3mockroot
+      COM_ADOBE_TESTING_S3MOCK_STORE_RETAIN_FILES_ON_EXIT: "true"
+    volumes:
+      - s3_data:/s3mockroot
+
+  # Vývojový server. Kód se připojí z disku, takže změny jsou vidět hned.
+  web:
+    build:
+      context: .
+      target: dev
+    depends_on:
+      db:
+        condition: service_healthy
+      s3:
+        condition: service_started
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - .:/app
+      # node_modules a .next zůstávají uvnitř kontejneru — na disku máš
+      # windowsové binárky, v kontejneru běží Linux. Míchat je nejde.
+      - node_modules:/app/node_modules
+      - next_cache:/app/.next
+    environment:
+      # NODE_ENV se tu záměrně nenastavuje. next dev i next build si ho
+      # nastavují samy podle příkazu; vnucená hodnota rozbije produkční
+      # sestavení (React se načte půl vývojový a půl produkční).
+      NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: ${DATABASE_URL}
+      AUTH_SECRET: ${AUTH_SECRET}
+      AUTH_URL: ${AUTH_URL}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_SECURE: ${SMTP_SECURE}
+      MAIL_FROM: ${MAIL_FROM}
+      AWS_SES_ACCESS_KEY_ID: ${AWS_SES_ACCESS_KEY_ID}
+      AWS_SES_SECRET_ACCESS_KEY: ${AWS_SES_SECRET_ACCESS_KEY}
+      AWS_SES_REGION: ${AWS_SES_REGION}
+      AWS_SES_CONFIGURATION_SET: ${AWS_SES_CONFIGURATION_SET}
+      # Příjem leadů z webu a propojení se SmartEmailingem. Bez těchhle
+      # by běžely potichu vypnuté — do produkčního image se .env nekopíruje.
+      LEAD_API_KEY: ${LEAD_API_KEY}
+      ORDER_API_KEY: ${ORDER_API_KEY}
+      # Oznámení klientům (krok 3A) a denní plánovač.
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      PLANOVAC_KEY: ${PLANOVAC_KEY:-}
+      SMARTEMAILING_USERNAME: ${SMARTEMAILING_USERNAME}
+      SMARTEMAILING_API_KEY: ${SMARTEMAILING_API_KEY}
+      SMARTEMAILING_WEBHOOK_SECRET: ${SMARTEMAILING_WEBHOOK_SECRET}
+      # Nahrávání souborů (UploadThing). Bez tokenu se nahrávání tiše
+      # vypne a v rozhraní se tlačítko Nahrát neukáže.
+      UPLOADTHING_TOKEN: ${UPLOADTHING_TOKEN:-}
+      # Úložiště příloh S3 (4. 10. 2026). Ve vývoji místní S3Mock, takže
+      # nové přílohy neodcházejí z počítače (a mají přednost před UploadThingem).
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://s3:9090}
+      S3_BUCKET: ${S3_BUCKET:-prilohy}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-s3mock-vymysleny-klic}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-s3mock-vymyslene-tajemstvi}
+      S3_REGION: ${S3_REGION:-auto}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+      # Hlášení chyb do Sentry. Ve vývoji se stejně nehlásí nic (podmínka
+      # je v src/lib/sentry/nastaveni.ts) — proměnná je tu kvůli sestavení.
+      NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
+      # Bind mount z Windows neposílá události o změnách souborů,
+      # sledování se proto musí ptát samo.
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+    stdin_open: true
+    tty: true
+
+  # Produkční verze pro ověření, že sestavení projde a běží.
+  # Spouští se výslovně: docker compose --profile prod up --build prod
+  prod:
+    profiles: ["prod"]
+    build:
+      context: .
+      target: runner
+      args:
+        # Hlášení z prohlížeče — Next.js ho vepíše do kódu při sestavení.
+        NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: ${DATABASE_URL}
+      AUTH_SECRET: ${AUTH_SECRET}
+      AUTH_URL: ${AUTH_URL}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_SECURE: ${SMTP_SECURE}
+      MAIL_FROM: ${MAIL_FROM}
+      AWS_SES_ACCESS_KEY_ID: ${AWS_SES_ACCESS_KEY_ID}
+      AWS_SES_SECRET_ACCESS_KEY: ${AWS_SES_SECRET_ACCESS_KEY}
+      AWS_SES_REGION: ${AWS_SES_REGION}
+      AWS_SES_CONFIGURATION_SET: ${AWS_SES_CONFIGURATION_SET}
+      LEAD_API_KEY: ${LEAD_API_KEY}
+      ORDER_API_KEY: ${ORDER_API_KEY}
+      # Oznámení klientům (krok 3A) a denní plánovač.
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      PLANOVAC_KEY: ${PLANOVAC_KEY:-}
+      SMARTEMAILING_USERNAME: ${SMARTEMAILING_USERNAME}
+      SMARTEMAILING_API_KEY: ${SMARTEMAILING_API_KEY}
+      SMARTEMAILING_WEBHOOK_SECRET: ${SMARTEMAILING_WEBHOOK_SECRET}
+      # Úložiště příloh S3 — jako na serveru, jen když je v .env.
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_REGION: ${S3_REGION:-auto}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
+      # Hlášení chyb do Sentry — v produkčním režimu se opravdu hlásí.
+      NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
+
+  # Automatické testy v prohlížeči (Playwright). Spouští se výslovně:
+  #   docker compose --profile test run --rm e2e
+  #
+  # Kontejner si sám pustí vlastní aplikaci (port 3100, jen uvnitř) nad
+  # **oddělenou databází `crm_test`**, kterou před každým během vymaže
+  # a naplní znovu. Vývojová data ani skutečné služby testy nevidí:
+  #   - místo `.env` dostane prázdný soubor — Next.js by si z něj jinak
+  #     sám dotáhl klíče ke SmartEmailingu a Amazonu,
+  #   - klíče ke službám mimo počítač jsou výslovně prázdné,
+  #   - e-maily končí v Mailpitu.
+  e2e:
+    profiles: ["test"]
+    image: mcr.microsoft.com/playwright:v1.63.0-noble
+    depends_on:
+      db:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+      s3:
+        condition: service_started
+    working_dir: /app
+    init: true
+    ipc: host
+    volumes:
+      - .:/app
+      - ./e2e/prazdny.env:/app/.env:ro
+      - node_modules:/app/node_modules
+      # Vlastní mezipaměť Nextu — dva servery nad jednou `.next` se nesnesou.
+      - next_cache_test:/app/.next
+    environment:
+      NEXT_TELEMETRY_DISABLED: "1"
+      # Z adresy vývojové databáze se v playwright.config.ts udělá adresa
+      # `crm_test`. Na jinou databázi testy nesáhnou.
+      DATABASE_URL: ${DATABASE_URL}
+      AUTH_SECRET: ${AUTH_SECRET}
+      AUTH_URL: http://localhost:3100
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_USER: ""
+      SMTP_PASSWORD: ""
+      SMTP_SECURE: "false"
+      MAIL_FROM: CRM testy <testy@beatstockmarket.test>
+      AWS_SES_ACCESS_KEY_ID: ""
+      AWS_SES_SECRET_ACCESS_KEY: ""
+      AWS_SES_REGION: ""
+      AWS_SES_CONFIGURATION_SET: ""
+      LEAD_API_KEY: ""
+      # Příjem objednávek z Landing Page se v testech **zkouší**, proto tu
+      # klíč prázdný není. Není to klíč ke službě mimo počítač, ale heslo,
+      # kterým se cizí systém prokazuje nám — nic tedy nikam neodchází.
+      # Stejnou hodnotu čte `e2e/objednavky-prijem.spec.ts`.
+      ORDER_API_KEY: "e2e-objednavky-klic-nepouzivat-nikde-jinde"
+      # Oznámení jdou přes doručovací služby mimo počítač — v testech
+      # prázdné, klientům proto chodí náhradní e-mail do Mailpitu.
+      VAPID_PUBLIC_KEY: ""
+      VAPID_PRIVATE_KEY: ""
+      # Plánovač se v testech zkouší. Stejně jako u objednávek je to heslo,
+      # kterým se prokazuje volající nám, ven nic neodchází. Stejnou hodnotu
+      # čte `e2e/oznameni.spec.ts`.
+      PLANOVAC_KEY: "e2e-planovac-klic-nepouzivat-nikde-jinde-0001"
+      SMARTEMAILING_USERNAME: ""
+      SMARTEMAILING_API_KEY: ""
+      SMARTEMAILING_WEBHOOK_SECRET: ""
+      UPLOADTHING_TOKEN: ""
+      # Přílohy se v testech nahrávají doopravdy — do místního S3Mock,
+      # ven nic neodchází. Vlastní bucket, ať se nemíchá s vývojem.
+      S3_ENDPOINT: http://s3:9090
+      S3_BUCKET: prilohy-test
+      S3_ACCESS_KEY_ID: s3mock-vymysleny-klic
+      S3_SECRET_ACCESS_KEY: s3mock-vymyslene-tajemstvi
+      S3_REGION: auto
+      S3_FORCE_PATH_STYLE: "true"
+      # Z testů se do Sentry nehlásí nic — padalo by tam každé zkušební
+      # selhání a zahltilo měsíční limit.
+      NEXT_PUBLIC_SENTRY_DSN: ""
+    command: ["npx", "playwright", "test"]
+
+  # Záloha databáze do souboru na disku. Spouští se výslovně:
+  #   docker compose --profile zaloha run --rm zaloha
+  #
+  # Zálohuje se ta databáze, kterou má v .env proměnná ZALOHA_DATABASE_URL —
+  # typicky nasazená databáze na Railway (její DATABASE_PUBLIC_URL). Heslo
+  # se nikdy nepíše do příkazu, aby nezůstalo v historii terminálu.
+  #
+  # Hotová záloha je v zalohy/. Ten adresář je v .gitignore i .dockerignore:
+  # jsou v něm osobní údaje klientů (security_warnings.md, pravidlo 8).
+  zaloha:
+    profiles: ["zaloha"]
+    # Stejná verze Postgresu jako u služby db — pg_dump umí zálohovat
+    # i ze staršího serveru, z novějšího ne.
+    image: postgres:18.6-trixie
+    volumes:
+      - ./scripts:/skripty:ro
+      - ./zalohy:/zalohy
+    environment:
+      # Ať má soubor v názvu český čas, ne UTC.
+      TZ: Europe/Prague
+      ZALOHA_DATABASE_URL: ${ZALOHA_DATABASE_URL:-}
+    # Skript se volá přes `sh`, protože bind mount z Windows nepřenáší
+    # příznak spustitelnosti.
+    entrypoint: ["sh", "/skripty/zaloha-databaze.sh"]
+
+  # Obnova ze zálohy. PŘEPÍŠE cílovou databázi, proto se potvrzuje jejím
+  # názvem. Spouští se výslovně:
+  #   docker compose --profile zaloha run --rm \
+  #     -e SOUBOR=crm-2026-09-20-1430.dump -e POTVRZUJI=crm obnova
+  obnova:
+    profiles: ["zaloha"]
+    image: postgres:18.6-trixie
+    volumes:
+      - ./scripts:/skripty:ro
+      # Jen pro čtení — obnova do záloh nikdy nezapisuje.
+      - ./zalohy:/zalohy:ro
+    environment:
+      TZ: Europe/Prague
+      # Kam se obnovuje. Záměrně to NENÍ DATABASE_URL — ať se omylem
+      # nepřepíše databáze, se kterou zrovna pracuješ.
+      OBNOVA_DATABASE_URL: ${OBNOVA_DATABASE_URL:-}
+      SOUBOR: ${SOUBOR:-}
+      POTVRZUJI: ${POTVRZUJI:-}
+    entrypoint: ["sh", "/skripty/obnova-databaze.sh"]
+
+  # Zašifrování zálohy heslem, než odejde z počítače. Spouští se výslovně:
+  #   docker compose --profile zaloha run --rm \
+  #     -e SOUBOR=crm-2026-09-20-1544.dump sifra
+  #
+  # Heslo se zadává do terminálu — nepředává se příkazem ani proměnnou,
+  # aby nezůstalo v historii (security.md, pravidlo 5). Proto tahle služba
+  # potřebuje terminál a nejde pustit s -T.
+  sifra:
+    profiles: ["zaloha"]
+    image: postgres:18.6-trixie
+    volumes:
+      - ./scripts:/skripty:ro
+      - ./zalohy:/zalohy
+    environment:
+      TZ: Europe/Prague
+      SOUBOR: ${SOUBOR:-}
+    entrypoint: ["sh", "/skripty/sifrovani-zalohy.sh"]
+
+  # Rozšifrování zálohy zpět. Spouští se výslovně:
+  #   docker compose --profile zaloha run --rm \
+  #     -e SOUBOR=crm-2026-09-20-1544.dump.gpg desifra
+  desifra:
+    profiles: ["zaloha"]
+    image: postgres:18.6-trixie
+    volumes:
+      - ./scripts:/skripty:ro
+      - ./zalohy:/zalohy
+    environment:
+      TZ: Europe/Prague
+      SOUBOR: ${SOUBOR:-}
+      # Soukromý klíč k automatickým zálohám (soubor v zalohy/), jinak prázdné.
+      KLIC: ${KLIC:-}
+    entrypoint: ["sh", "/skripty/desifrovani-zalohy.sh"]
+
+  # Automatická záloha (4. 10. 2026) — zkouška celým kolečkem proti
+  # vývojové databázi a místnímu S3Mock. Na serveru běží týž obraz
+  # (Dockerfile.zaloha) jako plánovaná služba na Railway. Spouští se výslovně:
+  #   docker compose --profile zaloha run --rm zaloha-zkouska
+  zaloha-zkouska:
+    profiles: ["zaloha"]
+    build:
+      context: .
+      dockerfile: Dockerfile.zaloha
+    depends_on:
+      db:
+        condition: service_healthy
+      s3:
+        condition: service_started
+    volumes:
+      # Skripty z disku, ať zkouška běží nad tím, co je v projektu teď.
+      - ./scripts:/skripty:ro
+    environment:
+      ZALOHA_DATABASE_URL: ${DATABASE_URL}
+      ZALOHY_S3_ENDPOINT: http://s3:9090
+      ZALOHY_S3_BUCKET: zalohy-test
+      ZALOHY_S3_ACCESS_KEY_ID: s3mock-vymysleny-klic
+      ZALOHY_S3_SECRET_ACCESS_KEY: s3mock-vymyslene-tajemstvi
+    entrypoint: ["sh", "/skripty/zkouska-zalohy.sh"]
+
+  # Výroba dvojice klíčů k automatickým zálohám. Heslo se zadává do
+  # terminálu, proto bez -T:
+  #   docker compose --profile zaloha run --rm klic-zaloh
+  klic-zaloh:
+    profiles: ["zaloha"]
+    image: postgres:18.6-trixie
+    volumes:
+      - ./scripts:/skripty:ro
+      - ./zalohy:/zalohy
+    entrypoint: ["sh", "/skripty/klic-zaloh.sh"]
+
+volumes:
+  db_data:
+  node_modules:
+  next_cache:
+  next_cache_test:
+  s3_data:

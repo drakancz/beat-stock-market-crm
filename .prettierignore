@@ -1,0 +1,9 @@
+.next
+node_modules
+package-lock.json
+public
+next-env.d.ts
+src/generated
+e2e/.stav
+e2e/vysledky
+e2e/zprava

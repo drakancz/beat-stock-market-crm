@@ -1,0 +1,42 @@
+# Závislosti se instalují v kontejneru (linuxové binárky, ne windowsové).
+node_modules
+.next
+out
+build
+
+# Git a nástroje
+.git
+.gitignore
+.github
+
+# Prostředí a tajemství — do image nikdy nepatří.
+.env
+.env.*
+*.pem
+
+# Snímky ze zkoušek (data z vývojové databáze) a nastavení nástrojů
+snimky
+zalohy
+e2e/.stav
+e2e/vysledky
+e2e/zprava
+.claude
+
+# Editory a systémové smetí
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Dokumentace a Docker soubory samotné
+README.md
+CLAUDE.md
+AGENTS.md
+security_warnings.md
+Dockerfile
+compose.yaml
+.dockerignore
+
+# Logy
+*.log
+npm-debug.log*

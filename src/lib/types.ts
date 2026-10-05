@@ -1,0 +1,231 @@
+import type {
+  ActivitySource,
+  BrokerAutoConnect,
+  CallOutcome,
+  ClientStage,
+  OrderStatus,
+  ProgramAccess,
+  PortfolioSource,
+  ProductKind,
+  Role,
+  UserEventKind,
+} from "@/generated/prisma/enums";
+
+/**
+ * České popisky k hodnotám z databáze a výpočty nad nimi.
+ *
+ * Samotné typy pocházejí ze schématu Prismy — když se schéma změní,
+ * TypeScript tady začne hlásit chybějící popisek, takže se na něj
+ * nezapomene.
+ */
+
+export const CLIENT_STAGES: { id: ClientStage; label: string }[] = [
+  { id: "NOVY", label: "Nový" },
+  { id: "KONTAKTOVAN", label: "Kontaktován" },
+  { id: "MA_ZAJEM", label: "Má zájem" },
+  { id: "MA_UCET", label: "Má účet u brokera" },
+  { id: "AKTIVNE_OBCHODUJE", label: "Aktivně obchoduje" },
+  { id: "NEAKTIVNI", label: "Neaktivní" },
+];
+
+export const STAGE_LABEL: Record<ClientStage, string> = {
+  NOVY: "Nový",
+  KONTAKTOVAN: "Kontaktován",
+  MA_ZAJEM: "Má zájem",
+  MA_UCET: "Má účet u brokera",
+  AKTIVNE_OBCHODUJE: "Aktivně obchoduje",
+  NEAKTIVNI: "Neaktivní",
+};
+
+export const ROLE_LABEL: Record<Role, string> = {
+  UZIVATEL: "Uživatel",
+  ADMINISTRATOR: "Administrátor",
+};
+
+/**
+ * Co která role smí. **Ne co vidí** — klienty, objednávky a hovory vidí
+ * od 22. 9. 2026 každý přihlášený, protože se klienti nikomu
+ * nepřiřazují.
+ */
+export const ROLE_SCOPE: Record<Role, string> = {
+  UZIVATEL: "Vidí všechny klienty a objednávky. Nespravuje systém.",
+  ADMINISTRATOR: "Navíc Správa, Nastavení, Smazané a stavy objednávek.",
+};
+
+export const OUTCOME_LABEL: Record<CallOutcome, string> = {
+  DOVOLANO: "Dovoláno",
+  NEDOVOLANO: "Nedovoláno",
+  SCHUZKA: "Domluvena schůzka",
+  ODMITNUTO: "Odmítnuto",
+  AUTOMATICKY: "Zapsáno automaticky",
+};
+
+export const ACTIVITY_LABEL: Record<ActivitySource, string> = {
+  SMARTEMAILING: "SmartEmailing",
+  WEBINARJAM: "WebinarJam",
+  KLIENTSKA_CAST: "Klientská část",
+};
+
+export const USER_EVENT_LABEL: Record<UserEventKind, string> = {
+  PRIHLASENI: "Přihlášení",
+  NEUSPESNE_PRIHLASENI: "Neúspěšné přihlášení",
+  ODHLASENI: "Odhlášení",
+  ZOBRAZENI: "Otevřená obrazovka",
+  MCP: "Dotaz přes AI (MCP)",
+};
+
+/** Proč přihlášení neprošlo. Klíč se ukládá do `user_events.detail`. */
+export const DUVOD_NEUSPECHU: Record<string, string> = {
+  spatne_heslo: "špatné heslo",
+  spatny_kod: "špatný kód z telefonu",
+  uzamceno: "účet dočasně zamčený po opakovaných pokusech",
+  pristup_odebran: "účet má odebraný přístup",
+  ucet_smazany: "účet je smazaný",
+};
+
+export const PRODUCT_KIND_LABEL: Record<ProductKind, string> = {
+  KURZ: "Kurz",
+  CLENSTVI: "Členství",
+  KONZULTACE: "Konzultace",
+};
+
+/**
+ * Jak dlouho klientovi produkt platí, když délka nejde nastavit.
+ *
+ * Kurz má klient napořád (Jakub, 27. 9. 2026), konzultace je jednorázová
+ * služba (Jakub, 28. 9. 2026). Ani jeden nemá délku, platnost u klientů
+ * ani úkol na prodloužení. Délku v měsících má jen členství.
+ */
+export const BEZ_PLATNOSTI: Partial<Record<ProductKind, { popis: string; vysvetleni: string }>> = {
+  KURZ: {
+    popis: "Neomezeno — doživotní přístup",
+    vysvetleni: "Zakoupením kurzu má klient přístup napořád, platnost se u kurzu nenastavuje.",
+  },
+  KONZULTACE: {
+    popis: "Bez platnosti — jednorázová služba",
+    vysvetleni: "Konzultace se neprodlužuje, platnost ani úkol na prodloužení u ní nevznikají.",
+  },
+};
+
+/** Má produkt tohoto druhu délku platnosti? */
+export function maPlatnost(druh: ProductKind): boolean {
+  return BEZ_PLATNOSTI[druh] === undefined;
+}
+
+/** Druhy produktů bez platnosti — pro podmínky v dotazech. */
+export const DRUHY_BEZ_PLATNOSTI = Object.keys(BEZ_PLATNOSTI) as ProductKind[];
+
+export const PORTFOLIO_SOURCE_LABEL: Record<PortfolioSource, string> = {
+  KLIC: "propojeno klíčem",
+  RUCNE: "zapsáno ručně",
+};
+
+export const AUTO_CONNECT_LABEL: Record<BrokerAutoConnect, string> = {
+  ANO: "Ano",
+  PRAVDEPODOBNE: "Pravděpodobně",
+  ZATIM_NE: "Zatím ne",
+};
+
+/** Zisk nebo ztráta portfolia v měně a v procentech. */
+export function portfolioResult(portfolio: { invested: number; value: number }) {
+  const absolute = portfolio.value - portfolio.invested;
+  const percent = portfolio.invested === 0 ? 0 : (absolute / portfolio.invested) * 100;
+  return { absolute, percent };
+}
+
+/** Zisk nebo ztráta jedné pozice. */
+export function positionResult(position: {
+  quantity: number;
+  averagePrice: number;
+  currentPrice: number;
+}) {
+  const cost = position.quantity * position.averagePrice;
+  const value = position.quantity * position.currentPrice;
+  const absolute = value - cost;
+  const percent = cost === 0 ? 0 : (absolute / cost) * 100;
+  return { cost, value, absolute, percent };
+}
+
+/**
+ * Stavy objednávky v pořadí, v jakém jimi objednávka prochází.
+ *
+ * Nahradily fáze obchodního případu (Jakub, 22. 9. 2026). Objednávku
+ * zakládá klient na Landing Page; stav říká, kde je platba.
+ */
+export const ORDER_STATUSES: { id: OrderStatus; label: string; popis: string }[] = [
+  {
+    id: "NOVA",
+    label: "Nová objednávka",
+    popis: "Klient objednávku vytvořil a je vyzván k úhradě přes platební bránu.",
+  },
+  {
+    id: "NEZAPLACENO",
+    label: "Nezaplaceno",
+    popis: "Výzva k platbě odešla, ale peníze zatím nedorazily.",
+  },
+  {
+    id: "ZAPLACENO",
+    label: "Zaplaceno",
+    popis: "Klient objednávku přes platební bránu uhradil.",
+  },
+];
+
+export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
+  NOVA: "Nová objednávka",
+  NEZAPLACENO: "Nezaplaceno",
+  ZAPLACENO: "Zaplaceno",
+};
+
+/**
+ * Přístup do zakoupeného programu.
+ *
+ * Zatím jen evidence — poskytování přístupu bude samostatný projekt.
+ * Zaplacená objednávka s nepovoleným přístupem se v seznamu zvýrazní.
+ */
+export const PROGRAM_ACCESSES: { id: ProgramAccess; label: string }[] = [
+  { id: "NEPOVOLEN", label: "Nepovolen" },
+  { id: "POVOLEN", label: "Povolen" },
+];
+
+export const PROGRAM_ACCESS_LABEL: Record<ProgramAccess, string> = {
+  NEPOVOLEN: "Nepovolen",
+  POVOLEN: "Povolen",
+};
+/**
+ * Hodnota zakázky — součet množství × nákupní cena přes všechny akcie.
+ *
+ * Počítá se pokaždé znovu ze samotných řádků. Uložené číslo by se
+ * po první úpravě akcií rozešlo s tím, z čeho vzniklo.
+ */
+export function hodnotaPripadu(akcie: { quantity: number; purchasePrice: number }[]): number {
+  return akcie.reduce((soucet, radek) => soucet + radek.quantity * radek.purchasePrice, 0);
+}
+
+/**
+ * Výsledky hovoru v pořadí od nejlepšího po nejhorší.
+ *
+ * Pořadí je závazné — podle něj stojí sloupce v grafu na Dashboardu.
+ * Proto je to pole, ne jen slovník popisků.
+ *
+ * `AUTOMATICKY` je na konci: není to výsledek telefonátu, ale poznámka
+ * o tom, že hovor vznikl přesunem případu do fáze Kontakt. V grafu má
+ * proto vlastní sloupec — jinak by se skutečné a automatické hovory
+ * smíchaly a čísla by přestala odpovídat (Jakub, 9. 9. 2026).
+ */
+export const CALL_OUTCOMES: CallOutcome[] = [
+  "SCHUZKA",
+  "DOVOLANO",
+  "NEDOVOLANO",
+  "ODMITNUTO",
+  "AUTOMATICKY",
+];
+
+/**
+ * Výsledky, které si člověk smí vybrat sám.
+ *
+ * `AUTOMATICKY` mezi nimi schválně není — kdyby si ho někdo nastavil
+ * ručně, přestalo by být poznat, co systém zapsal sám.
+ */
+export const RUCNI_VYSLEDKY: CallOutcome[] = CALL_OUTCOMES.filter(
+  (vysledek) => vysledek !== "AUTOMATICKY",
+);

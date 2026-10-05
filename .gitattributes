@@ -1,0 +1,16 @@
+# V repozitáři jsou konce řádků vždy LF. Projekt běží v linuxových
+# kontejnerech — soubory s windowsovými konci řádků tam dělají potíže.
+* text=auto eol=lf
+
+# Binární soubory Git neupravuje.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+
+# Lockfile se v recenzi nerozbaluje — je generovaný.
+package-lock.json linguist-generated=true -diff

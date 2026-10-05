@@ -1,0 +1,52 @@
+{
+  "name": "CRM Beat Stock Market",
+
+  // Žádný zvláštní Dockerfile — používá se ten samý compose.yaml
+  // jako pro běžnou práci, aby editor běžel v přesně stejném prostředí.
+  "dockerComposeFile": "../compose.yaml",
+  "service": "web",
+  "workspaceFolder": "/app",
+
+  // Kontejner jen čeká, vývojový server si spustíš sám v terminálu
+  // editoru (`npm run dev`). Kdyby ho spouštěl kontejner, shodil by
+  // při pádu i celý editor.
+  "overrideCommand": true,
+
+  // Zavřením okna se kontejner zastaví.
+  "shutdownAction": "stopCompose",
+
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": {
+      "label": "CRM (vývojový server)",
+      "onAutoForward": "notify"
+    }
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss"
+      ],
+      "settings": {
+        // TypeScript z kontejneru, ne z počítače.
+        "typescript.tsdk": "node_modules/typescript/lib",
+        "typescript.enablePromptUseWorkspaceTsdk": true,
+
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": "explicit"
+        },
+
+        // Tailwind 4 už nemá konfigurační soubor — nastavení je v CSS.
+        "tailwindCSS.experimental.configFile": "src/app/globals.css",
+
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "files.eol": "\n"
+      }
+    }
+  }
+}

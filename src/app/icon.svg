@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!--
+    Ikona v záložce prohlížeče. Stejný tvar jako značka v menu
+    (src/components/brand/logo.tsx), ale **v rámečku a v pevných barvách** —
+    v záložce je kolem 16 px, kde rám pomáhá tvar udržet, a barvu si tam
+    aplikace nemá jak předat.
+
+    Modrá je --primary ze světlého režimu (oklch(35% 0.12 255)), světlá
+    je papírová --background. Při změně palety změň i tohle.
+  -->
+  <rect width="64" height="64" rx="13" fill="#1d3f7a"/>
+  <g fill="none" stroke="#fdfcfa" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 36h6l3.5-9 5 18L28 24l3.5 12h4" stroke-width="4" stroke-opacity="0.5"/>
+    <path d="M35.5 36l6.5-7.5 4.5 4.5L55 18" stroke-width="4.6"/>
+    <path d="M47 18.5h8v8" stroke-width="4.6"/>
+  </g>
+</svg>

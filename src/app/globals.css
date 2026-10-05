@@ -1,0 +1,347 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design tokeny
+ *
+ * Paleta Beat Stock Market (Jakub, 22. 9. 2026). Vychází z vizuálu na
+ * <https://beat-stock-market.lovable.app/>, který stojí na stejném systému
+ * proměnných jako tahle aplikace, takže se hodnoty přenesly přímo.
+ *
+ * Značka je **modrá a papírová**: teplé, lehce nažloutlé pozadí, text
+ * v tmavé námořnické modři, tlačítka v syté modři, doplňková písková.
+ * Pozor, rozchází se to se zadáním v2.0, kde byla zlatá — platí vizuál.
+ *
+ * Barvu nikde v aplikaci nepiš natvrdo. Všechno se bere odsud, aby šla
+ * značka změnit na jednom místě — tahle změna zabrala jeden soubor.
+ *
+ * --profit a --loss (zelená a červená u čísel) brand nepřebíjí. Jsou
+ * vyhrazené zisku a ztrátě, aby šlo portfolio číst na první pohled.
+ *
+ * **--destructive je od 22. 9. 2026 červený**, ne oranžový. Do té doby
+ * byl oranžový schválně, aby červená znamenala jedinou věc — ztrátu.
+ * Jakub se rozhodl srovnat ho s vizuálem s vědomím, že červená teď nese
+ * dva významy: ztrátu u čísel a nebezpečnou akci u tlačítek. **Když se
+ * bude řešit, proč je něco červené, tohle je ten důvod** — nevracej to
+ * zpátky bez jeho slova. Odstíny dál procházejí kontrastem WCAG AA.
+ */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  /*
+   * Písma značky (Jakub, 22. 9. 2026): Archivo na nadpisy, IBM Plex Sans
+   * na běžný text, IBM Plex Mono na čísla. Vizuál vlastní písmo nemá —
+   * bere systémové — takže tahle trojice je ze zadání v2.0.
+   */
+  --font-sans: var(--font-plex-sans);
+  --font-mono: var(--font-plex-mono);
+  --font-heading: var(--font-archivo);
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-chart-kategorie-1: var(--chart-kategorie-1);
+  --color-chart-kategorie-2: var(--chart-kategorie-2);
+  --color-chart-kategorie-3: var(--chart-kategorie-3);
+  --color-chart-kategorie-4: var(--chart-kategorie-4);
+  --color-chart-kategorie-5: var(--chart-kategorie-5);
+
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  /* Vyhrazené zisku a ztrátě */
+  --color-profit: var(--profit);
+  --color-loss: var(--loss);
+
+  /* Přístup do programu povolen / nepovolen (Jakub, 23. 9. 2026) */
+  --color-pristup-ano: var(--pristup-ano);
+  --color-pristup-ano-foreground: var(--pristup-ano-foreground);
+  --color-pristup-ne: var(--pristup-ne);
+  --color-pristup-ne-foreground: var(--pristup-ne-foreground);
+  --color-konec-clenstvi: var(--konec-clenstvi);
+  --color-konec-clenstvi-foreground: var(--konec-clenstvi-foreground);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  /*
+   * Mávající ručka u pozdravu na Dashboardu. Hýbe se pořád, ale lehce —
+   * malý úhel a pomalé tempo, ať u čísel neruší (Jakub, 10. 9. 2026).
+   * Používá se přes `motion-safe:`, takže kdo má v systému omezené
+   * animace, vidí ji v klidu.
+   */
+  --animate-mavani: mavani 2.4s ease-in-out infinite;
+
+  @keyframes mavani {
+    0%,
+    100% {
+      transform: rotate(-6deg);
+    }
+    50% {
+      transform: rotate(10deg);
+    }
+  }
+}
+
+:root {
+  --radius: 0.625rem;
+
+  /*
+   * Teplý papír, ne čistá bílá. Laděno 22. 9. 2026 dvakrát, oboje podle
+   * Jakuba: vizuál má 99 %, což je od bílé karty k nerozeznání → 96,5 %,
+   * a po prohlédnutí ve světlém režimu ještě **tmavší a kontrastnější**
+   * → 94 %, s menší sytostí (víc do šeda, míň do béžova).
+   *
+   * **Tlumené odstíny, okraje a menu se musí posouvat s ním.** Když se
+   * změní jen pozadí, `muted` a `border` na tmavším papíru zaniknou
+   * a obrazovka ztratí členění.
+   */
+  --background: oklch(94% 0.006 85);
+  /* Text v tmavé námořnické modři místo černé. */
+  --foreground: oklch(20% 0.04 265);
+  --card: oklch(100% 0 0);
+  --card-foreground: oklch(20% 0.04 265);
+  --popover: oklch(100% 0 0);
+  --popover-foreground: oklch(20% 0.04 265);
+  /* Hlavní tlačítka a aktivní položka v menu. */
+  --primary: oklch(35% 0.12 255);
+  --primary-foreground: oklch(99% 0.005 85);
+  --secondary: oklch(90.5% 0.014 90);
+  --secondary-foreground: oklch(20% 0.04 265);
+  --muted: oklch(89.5% 0.01 90);
+  --muted-foreground: oklch(49% 0.04 260);
+  /* Doplňková písková — zvýrazněné řádky, odznaky, najetí myší. */
+  --accent: oklch(89.5% 0.038 75);
+  --accent-foreground: oklch(20% 0.04 265);
+  /* Červená — mazání a chyby. Viz poznámka v hlavičce souboru. */
+  --destructive: oklch(57% 0.25 27);
+  --border: oklch(83.5% 0.018 90);
+  --input: oklch(83.5% 0.018 90);
+  --ring: oklch(55% 0.12 255);
+  /*
+   * Barvy grafů na Dashboardu.
+   *
+   * `--chart-1` až `--chart-5` je **stupnice jedné modré** od světlé
+   * k tmavé. Používá se tam, kde na sobě hodnoty navazují: fáze
+   * obchodního případu, objem u brokera. Odstín tam nese pořadí, ne
+   * identitu.
+   *
+   * `--chart-kategorie-*` je **pět nesouvisejících odstínů** pro věci,
+   * které na sebe nenavazují — výsledek hovoru. Vybrané tak, aby se
+   * nepletly se zelenou u zisku, červenou u ztráty ani oranžovou u chyb.
+   *
+   * Odstupy jsou **spočítané, ne odhadnuté**: sousední dvojice vydrží
+   * protanopii i deuteranopii. Růžová a žlutá mají proti bílé kartě menší
+   * kontrast než 3:1, proto u sloupců vždycky stojí i číslo — barva sama
+   * nikde nic neurčuje.
+   *
+   * Barvy grafů se s brandem 22. 9. 2026 **nezměnily** — Jakub si vybral
+   * nechat je. Modrá stupnice k nové hlavní modři sedí a přepsáním by se
+   * zahodily spočítané rozestupy, na kterých stojí čitelnost.
+   *
+   * Tohle je světlý režim. Tmavý má vlastní sadu v `.dark` níž (od 22. 9.
+   * 2026, kdy přibyl přepínač) — na tmavém podkladu musí být odstíny
+   * světlejší, jinak by tmavý konec stupnice splynul s pozadím.
+   */
+  --chart-1: #86b6ef;
+  --chart-2: #5598e7;
+  --chart-3: #2a78d6;
+  --chart-4: #1c5cab;
+  --chart-5: #0d366b;
+
+  --chart-kategorie-1: #2a78d6;
+  --chart-kategorie-2: #4a3aa7;
+  --chart-kategorie-3: #e87ba4;
+  --chart-kategorie-4: #eda100;
+  --chart-kategorie-5: #1baf7a;
+
+  /* Menu je o odstín tmavší než obsah — drží svislou hranu i bez čáry. */
+  --sidebar: oklch(92% 0.008 85);
+  --sidebar-foreground: oklch(20% 0.04 265);
+  --sidebar-primary: oklch(35% 0.12 255);
+  --sidebar-primary-foreground: oklch(99% 0.005 85);
+  --sidebar-accent: oklch(88.5% 0.018 90);
+  --sidebar-accent-foreground: oklch(20% 0.04 265);
+  --sidebar-border: oklch(83.5% 0.018 90);
+  --sidebar-ring: oklch(55% 0.12 255);
+
+  /* Zisk a ztráta — jediné barevné hodnoty mimo paletu shadcn */
+  --profit: #15803d;
+  --loss: #dc2626;
+
+  /*
+   * Přístup do programu (Jakub, 23. 9. 2026): světle zelená = povolen,
+   * světle červená = nepovolen. Schválně **ne --profit a --loss** — ty
+   * jsou vyhrazené zisku a ztrátě u čísel. Tady jde o podklad políčka
+   * s tmavým textem, ne o barvu čísla, takže se s portfoliem nepletou.
+   * Text na podkladu drží kontrast WCAG AA.
+   */
+  --pristup-ano: oklch(93% 0.06 150);
+  --pristup-ano-foreground: oklch(37% 0.1 150);
+  --pristup-ne: oklch(93.5% 0.035 25);
+  --pristup-ne-foreground: oklch(45% 0.17 25);
+
+  /*
+   * Členství skončilo, ale přístup do programu je povolený (Jakub,
+   * 25. 9. 2026): jantarová, ať se neplete se zelenou „povolen" ani
+   * s červeným „zaplatil a čeká na přístup". Text drží kontrast WCAG AA.
+   */
+  --konec-clenstvi: oklch(95% 0.06 85);
+  --konec-clenstvi-foreground: oklch(43% 0.1 65);
+}
+
+/*
+ * Tmavý režim. Do 22. 9. 2026 tu byla neutrální šeď, kterou nešlo ani
+ * zapnout; od té doby má aplikace přepínač (Můj profil → v menu u jména)
+ * a tmavá varianta je součást značky, ne odložený zbytek.
+ *
+ * Podklad je tmavá modř, ne černá — drží to stejnou rodinu jako světlá
+ * varianta. Každá barva je **vlastní hodnota pro tmavý podklad**, ne
+ * obrácená světlá: zesvětlené odstíny, protože na tmavém pozadí čte oko
+ * barvu jinak.
+ */
+.dark {
+  --background: oklch(15% 0.03 265);
+  --foreground: oklch(97% 0.005 85);
+  --card: oklch(20% 0.04 265);
+  --card-foreground: oklch(97% 0.005 85);
+  --popover: oklch(20% 0.04 265);
+  --popover-foreground: oklch(97% 0.005 85);
+  /* Na tmavém podkladu musí být hlavní modř světlá, ne sytá. */
+  --primary: oklch(75% 0.12 255);
+  --primary-foreground: oklch(15% 0.03 265);
+  --secondary: oklch(28% 0.04 265);
+  --secondary-foreground: oklch(97% 0.005 85);
+  --muted: oklch(28% 0.04 265);
+  --muted-foreground: oklch(70% 0.04 260);
+  /* Písková ztmavená do podkladu, ať nesvítí. */
+  --accent: oklch(30% 0.06 75);
+  --accent-foreground: oklch(97% 0.005 85);
+  /* Červená i tady — viz poznámka v hlavičce souboru. */
+  --destructive: oklch(70% 0.19 22);
+  --border: oklch(100% 0 0 / 10%);
+  --input: oklch(100% 0 0 / 15%);
+  --ring: oklch(55% 0.12 255);
+
+  /*
+   * Stupnice jedné modré pro tmavý podklad. Jde od nejsvětlejší
+   * k nejtmavší stejně jako ve světlém režimu, takže pořadí hodnot
+   * zůstává čitelné — jen celá stupnice je posunutá nahoru, aby ani
+   * poslední krok nesplynul s pozadím.
+   */
+  --chart-1: #d3e4fa;
+  --chart-2: #aac9f1;
+  --chart-3: #80abe5;
+  --chart-4: #5a8ed8;
+  --chart-5: #3a72c4;
+
+  /*
+   * Pět nesouvisejících odstínů pro tmavý podklad. Drží stejné odstíny
+   * jako ve světlém režimu (modrá, fialová, růžová, žlutá, zelená), jen
+   * zesvětlené — identita barvy zůstává, mění se jen jas.
+   */
+  --chart-kategorie-1: #7fb0ea;
+  --chart-kategorie-2: #9b8ce0;
+  --chart-kategorie-3: #f0a3bf;
+  --chart-kategorie-4: #f2c14e;
+  --chart-kategorie-5: #4fd3a0;
+
+  --sidebar: oklch(20% 0.04 265);
+  --sidebar-foreground: oklch(97% 0.005 85);
+  --sidebar-primary: oklch(75% 0.12 255);
+  --sidebar-primary-foreground: oklch(15% 0.03 265);
+  --sidebar-accent: oklch(28% 0.04 265);
+  --sidebar-accent-foreground: oklch(97% 0.005 85);
+  --sidebar-border: oklch(100% 0 0 / 10%);
+  --sidebar-ring: oklch(55% 0.12 255);
+
+  /* Světlejší odstíny, aby zisk a ztráta byly čitelné na tmavém podkladu */
+  --profit: #5ed6a0;
+  --loss: #f2897c;
+
+  /* Přístup do programu — tlumené podklady se světlým textem */
+  --pristup-ano: oklch(32% 0.07 150);
+  --pristup-ano-foreground: oklch(88% 0.1 150);
+  --pristup-ne: oklch(32% 0.08 25);
+  --pristup-ne-foreground: oklch(88% 0.07 25);
+  --konec-clenstvi: oklch(32% 0.06 75);
+  --konec-clenstvi-foreground: oklch(88% 0.09 85);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  html {
+    @apply font-sans;
+  }
+
+  /*
+   * Nadpisy píše Archivo (Jakub, 22. 9. 2026) — nadpisy obrazovek
+   * i názvy karet a oken. Je to tady jedním pravidlem schválně: kdyby se
+   * `font-heading` psalo do každé obrazovky zvlášť, u další nové by se
+   * na to zapomnělo a značka by se pomalu rozpadla.
+   *
+   * `alert-title` mezi nimi **není** — hlášky o chybě mají být v tomtéž
+   * písmu jako text pod nimi, aby působily jako věta, ne jako nadpis.
+   */
+  h1,
+  h2,
+  h3,
+  h4,
+  [data-slot="card-title"],
+  [data-slot="dialog-title"],
+  [data-slot="sheet-title"],
+  [data-slot="popover-title"] {
+    @apply font-heading;
+  }
+
+  /*
+   * Čísla v jednotné šířce, aby se řády pod sebou zarovnaly
+   * a portfolio šlo číst jako výpis.
+   */
+  .tabular {
+    @apply font-mono tabular-nums;
+  }
+}
