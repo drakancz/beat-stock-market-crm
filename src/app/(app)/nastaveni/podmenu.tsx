@@ -6,12 +6,16 @@ import {
   Activity,
   Bell,
   Building2,
+  CalendarCheck,
   CalendarClock,
   CalendarDays,
+  ListPlus,
   Megaphone,
   Percent,
   ShieldCheck,
+  Tags,
   Target,
+  Webhook,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -19,9 +23,13 @@ import { cn } from "@/lib/utils";
 const POLOZKY = [
   { href: "/nastaveni", label: "Sazby DPH", icon: Percent },
   { href: "/nastaveni/zdroje", label: "Zdroje klientů", icon: Megaphone },
+  { href: "/nastaveni/stitky", label: "Štítky", icon: Tags },
+  { href: "/nastaveni/pole", label: "Vlastní pole", icon: ListPlus },
   { href: "/nastaveni/firma", label: "Firma a e-maily", icon: Building2 },
   { href: "/nastaveni/zabezpeceni", label: "Zabezpečení", icon: ShieldCheck },
   { href: "/nastaveni/upozorneni", label: "Upozornění", icon: Bell },
+  { href: "/nastaveni/webhooky", label: "Webhooky", icon: Webhook },
+  { href: "/nastaveni/kalendar", label: "Kalendář", icon: CalendarCheck },
   { href: "/nastaveni/cile", label: "Cíle", icon: Target },
   { href: "/nastaveni/prodlouzeni", label: "Prodloužení", icon: CalendarClock },
   { href: "/nastaveni/pracovni-dny", label: "Pracovní dny", icon: CalendarDays },

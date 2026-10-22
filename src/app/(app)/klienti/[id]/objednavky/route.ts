@@ -21,7 +21,7 @@ import { ORDER_STATUS_LABEL, PROGRAM_ACCESS_LABEL } from "@/lib/types";
  * Vlastní obsluha adresy, ne serverová akce: prohlížeč má soubor
  * stáhnout. Rám `(app)` se na obsluhu adres nevztahuje, proto se
  * přihlášení i dvoufázové ověření kontrolují tady (vzor
- * `hovory/export/route.ts`).
+ * `dashboard/export/route.ts`).
  */
 export async function GET(_request: Request, { params }: RouteContext<"/klienti/[id]/objednavky">) {
   const viewer = await getViewer();

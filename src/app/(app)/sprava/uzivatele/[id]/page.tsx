@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { db } from "@/lib/db";
 import { formatDatum } from "@/lib/format";
 import { idZAdresy } from "@/lib/parametry";
-import { requireAdmin } from "@/lib/session";
+import { requireSpravceUzivatelu } from "@/lib/session";
 import { ROLE_LABEL } from "@/lib/types";
 
 import { OsobniUdaje } from "../../../profil/osobni-udaje";
@@ -27,7 +27,7 @@ export const dynamic = "force-dynamic";
  * Účet v koši tu není; vrací se ze Smazaných.
  */
 export default async function ProfilUzivatelePage({ params }: PageProps<"/sprava/uzivatele/[id]">) {
-  const admin = await requireAdmin();
+  const admin = await requireSpravceUzivatelu();
   const id = idZAdresy((await params).id);
   if (!id) notFound();
 

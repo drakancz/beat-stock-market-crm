@@ -70,6 +70,9 @@ test.describe("Dashboard po osekání", () => {
     "Brokeři na případech",
     "Obchodníci",
     "Klienti podle stavu",
+    // Hovory z CRM zmizely úplně 20. 10. 2026 (Jakub).
+    "Hovory podle výsledku",
+    "Hovory",
     // Zrušená dlaždice. Sekce Brokeři v menu zůstává, proto se hledá
     // jen v obsahu stránky — viz `obsah` níž.
     "Brokeři",
@@ -78,7 +81,6 @@ test.describe("Dashboard po osekání", () => {
     "Moje úkoly",
     // Jeden cíl za firmu od 22. 9. 2026 — karta se jmenuje v jednotném čísle.
     "Plnění cíle",
-    "Hovory podle výsledku",
     "Objednávky podle stavu",
   ];
 
@@ -127,13 +129,13 @@ test.describe("Dashboard po osekání", () => {
     }
   });
 
-  test("zůstaly tři dlaždice, ne čtyři", async ({ page }) => {
+  test("zůstaly dvě dlaždice (Hovory zmizely 20. 10. 2026)", async ({ page }) => {
     await page.goto("/dashboard");
 
-    // Zase jen obsah stránky: „Hovory" i „Objednávky" jsou i v menu.
+    // Zase jen obsah stránky: „Objednávky" jsou i v menu.
     const obsah = page.getByRole("main");
 
-    for (const dlazdice of ["Objednávky", "Cena objednávek", "Hovory"]) {
+    for (const dlazdice of ["Objednávky", "Cena objednávek"]) {
       await expect(obsah.getByText(dlazdice, { exact: true }).first()).toBeVisible();
     }
   });
@@ -177,12 +179,12 @@ test.describe("Export statistik z Dashboardu", () => {
       "Souhrn",
       "Plnění cíle",
       "Objednávky podle stavu",
-      "Hovory podle výsledku",
       "Noví klienti podle zdroje",
       "Vývoj v čase",
     ]) {
       expect(text, `v souboru chybí tabulka ${tabulka}`).toContain(`"${tabulka}`);
     }
+    expect(text, "hovory z exportu zmizely").not.toContain("Hovory");
 
     // Jen součty — žádný e-mail ani telefon klienta se do souboru nedostane.
     expect(text).not.toMatch(/@/);

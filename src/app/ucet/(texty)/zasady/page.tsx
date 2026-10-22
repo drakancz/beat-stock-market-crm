@@ -44,7 +44,7 @@ export default async function ZasadyPage() {
           </li>
           <li>brokery, které jste uvedli při objednávce (nebo že žádného nemáte),</li>
           <li>jestli souhlasíte se zasíláním novinek, a od kdy,</li>
-          <li>poznámky našeho týmu z hovorů a komunikace s vámi,</li>
+          <li>poznámky našeho týmu z komunikace s vámi,</li>
           <li>
             údaje o účtu v klientské části: kdy jste se naposledy přihlásili a jestli máte zapnuté
             dvoufázové ověření. Vaše heslo neznáme — ukládáme jen jeho nevratný otisk.
@@ -136,6 +136,20 @@ export default async function ZasadyPage() {
             Přehrávač se načte, až když stránku s videem otevřete, v režimu bez sledovacích cookies;
             služba uvidí vaši IP adresu a prohlížeč (USA).
           </li>
+          <li>
+            <strong>GoPay</strong> — platby kartou a převodem; dostane váš e-mail, číslo objednávky,
+            produkty a částku. Údaje o kartě zadáváte přímo GoPay, my je nevidíme (Česká republika),
+          </li>
+          <li>
+            <strong>Google (Kalendář)</strong> — termíny konzultací v našem firemním kalendáři;
+            dostane vaše jméno a čas konzultace, e-mail ani telefon ne (USA),
+          </li>
+          <li>
+            <strong>Služby pro propojení systémů</strong> (například Zapier) — jméno a údaje o
+            objednávce, rezervaci konzultace nebo dokončeném kurzu, abychom je mohli zpracovat v
+            dalších nástrojích, například v účetnictví. E-maily ani telefony nepředáváme. Kterou
+            službu právě používáme, vám na požádání sdělíme.
+          </li>
         </ul>
         <p>
           U zpracovatelů mimo Evropskou unii se předání opírá o nástroje, které k tomu GDPR
@@ -147,7 +161,10 @@ export default async function ZasadyPage() {
       <Oddil nazev="6. Vaše práva">
         <p>Máte právo:</p>
         <ul className={SEZNAM}>
-          <li>vědět, jaké údaje o vás máme, a dostat jejich kopii,</li>
+          <li>
+            vědět, jaké údaje o vás máme, a dostat jejich kopii — stáhnete si ji sami v klientské
+            části v Mém profilu (PDF k přečtení i JSON pro přenesení k jinému správci),
+          </li>
           <li>
             nechat je opravit — jméno, telefon a souhlas si změníte sami v klientské části v Mém
             profilu,

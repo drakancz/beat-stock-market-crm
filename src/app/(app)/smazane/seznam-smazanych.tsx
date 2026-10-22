@@ -41,7 +41,7 @@ export interface RadekKose {
   druh: Druh;
   id: string;
   nazev: string;
-  /** Druhý řádek pod názvem — e-mail, měna, počet portfolií. */
+  /** Druhý řádek pod názvem — e-mail, částka, počet objednávek. */
   popis: string;
   /** Kdy se do koše dostal, v ISO tvaru. */
   smazano: string;
@@ -75,21 +75,6 @@ const DRUHY_POPIS: Record<
     jednotne: "objednávku",
     prazdno: "Žádná smazaná objednávka.",
   },
-  hovor: {
-    nadpis: "Hovory",
-    sloupec: "Hovor",
-    popis:
-      "Obnovením se hovor vrátí na časovou osu klienta, do přehledu Hovory i do čísel na Dashboardu.",
-    jednotne: "hovor",
-    prazdno: "Žádný smazaný hovor.",
-  },
-  portfolio: {
-    nadpis: "Portfolia",
-    sloupec: "Portfolio",
-    popis: "Vazba klienta na brokera. Obnovením se klient zase objeví v seznamu u brokera.",
-    jednotne: "portfolio",
-    prazdno: "Žádné smazané portfolio.",
-  },
   produkt: {
     nadpis: "Produkty",
     sloupec: "Produkt",
@@ -98,10 +83,26 @@ const DRUHY_POPIS: Record<
     jednotne: "produkt",
     prazdno: "Žádný smazaný produkt.",
   },
+  "slevovy-kod": {
+    nadpis: "Slevové kódy",
+    sloupec: "Kód",
+    popis:
+      "Obnovením se kód vrátí do Produkty → Slevové kódy a Landing Page ho zase přijme. Objednávky si slevu nechávají i bez něj.",
+    jednotne: "kód",
+    prazdno: "Žádný smazaný slevový kód.",
+  },
+  doporucitel: {
+    nadpis: "Doporučitelé",
+    sloupec: "Doporučitel",
+    popis:
+      "Obnovením se doporučitel vrátí do Produkty → Doporučitelé i s přivedenými klienty a odměnami.",
+    jednotne: "doporučitele",
+    prazdno: "Žádný smazaný doporučitel.",
+  },
   broker: {
     nadpis: "Brokeři",
     sloupec: "Broker",
-    popis: "Obnovením se broker vrátí do seznamu i do výběru u portfolií.",
+    popis: "Obnovením se broker vrátí do seznamu brokerů.",
     jednotne: "brokera",
     prazdno: "Žádný smazaný broker.",
   },
@@ -118,9 +119,9 @@ const DRUHY_POPIS: Record<
 const PORADI: Druh[] = [
   "klient",
   "objednavka",
-  "hovor",
-  "portfolio",
   "produkt",
+  "slevovy-kod",
+  "doporucitel",
   "broker",
   "uzivatel",
 ];
@@ -129,7 +130,7 @@ const PORADI: Druh[] = [
  * Obsah společného koše, rozdělený podle druhu záznamu.
  *
  * Každý druh má vlastní tabulku s vlastním nadpisem — v jednom seznamu
- * se klient, portfolio a účet pletly dohromady a nešlo je od sebe na
+ * se klient, objednávka a účet pletly dohromady a nešlo je od sebe na
  * první pohled odlišit. Karta se ukazuje i u prázdného druhu (Jakub,
  * 10. 9. 2026), ať je vidět, co všechno se sem dá vrátit.
  *

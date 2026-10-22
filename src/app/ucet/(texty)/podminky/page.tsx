@@ -10,7 +10,8 @@ export const dynamic = "force-dynamic";
 /**
  * Podmínky používání klientské části (Jakub, 30. 9. 2026). **Vidí
  * i nepřihlášený.** Týkají se jen klientské části, ne nákupu — ten se
- * řídí obchodními podmínkami při objednávce na Landing Page.
+ * řídí obchodními podmínkami (`/ucet/obchodni-podminky` v klientské části,
+ * na Landing Page vlastními).
  *
  * Oddíl 4 je tu kvůli security_warnings.md, pravidlu 9: nic v klientské
  * části nesmí působit jako investiční doporučení.
@@ -25,8 +26,11 @@ export default async function PodminkyPage() {
       <Oddil nazev="1. O čem tyto podmínky jsou">
         <p>
           Klientskou část provozuje {popisFirmy(firma)} pro své zákazníky. Tyto podmínky říkají, jak
-          ji můžete používat. Nákup produktů se řídí obchodními podmínkami, se kterými jste
-          souhlasili při objednávce.
+          ji můžete používat. Nákup produktů se řídí{" "}
+          <Link href="/ucet/obchodni-podminky" className="underline">
+            obchodními podmínkami
+          </Link>
+          , se kterými jste souhlasili při objednávce.
         </p>
       </Oddil>
 

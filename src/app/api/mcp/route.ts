@@ -1,5 +1,9 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import {
+  createMcpHandler,
+  isLegacyRequest,
+  McpServer,
+  WebStandardStreamableHTTPServerTransport,
+} from "@modelcontextprotocol/server";
 import { after } from "next/server";
 
 import { klicZHlavicky, overKlic, poznamenejPouziti } from "@/lib/mcp/klice";
@@ -31,6 +35,12 @@ import {
  * Server je **bez stavu**: každý požadavek dostane vlastní instanci
  * svázanou s majitelem klíče a po odpovědi zanikne. Nic se nedrží
  * v paměti mezi požadavky, takže nevadí restart ani víc kopií aplikace.
+ *
+ * **Dvě verze protokolu** (MCP 2, 18. 10. 2026): novější klienti (Claude
+ * Code) mluví revizí `2026-07-28`, tu obslouží `createMcpHandler()`.
+ * Starší (`2025-…`) jdou dál přes `WebStandardStreamableHTTPServerTransport`
+ * s odpovědí v JSONu — vestavěná záložní cesta knihovny by odpovídala
+ * proudem událostí. Obě cesty mají tytéž nástroje (`novyServer()`).
  */
 
 /** Špatné klíče z jedné adresy — stejně jako u webhooku SmartEmailingu. */
@@ -83,12 +93,32 @@ export async function POST(request: Request) {
 
   after(() => poznamenejPouziti(overeni.klicId));
 
-  const server = new McpServer(
-    { name: "crm-beatstockmarket", version: "1.0.0" },
-    { instructions: instrukceServeru(overeni.viewer, overeni.smiZapisovat) },
-  );
-  zaregistrujNastroje(server, overeni.viewer, { smiZapisovat: overeni.smiZapisovat });
+  const { viewer, smiZapisovat } = overeni;
+  function novyServer() {
+    const server = new McpServer(
+      { name: "crm-beatstockmarket", version: "1.0.0" },
+      { instructions: instrukceServeru(viewer, smiZapisovat) },
+    );
+    zaregistrujNastroje(server, viewer, { smiZapisovat });
+    return server;
+  }
 
+  // Rozhodnutí o verzi čte tělo, proto dostane kopii požadavku.
+  if (!(await isLegacyRequest(request.clone(), undefined, { maxRequestBodySize: MAX_TELO }))) {
+    // Odpověď je jeden JSON — proud by vznikl, jen kdyby nástroj posílal
+    // průběžná oznámení, a ty naše nástroje nemají.
+    const obsluha = createMcpHandler(novyServer, {
+      legacy: "reject",
+      maxRequestBodySize: MAX_TELO,
+    });
+    try {
+      return bezMezipameti(await obsluha.fetch(request));
+    } finally {
+      await obsluha.close();
+    }
+  }
+
+  const server = novyServer();
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
@@ -97,21 +127,23 @@ export async function POST(request: Request) {
 
   try {
     await server.connect(transport);
-    const odpoved = await transport.handleRequest(request);
-
-    // Tělo se přečte celé dřív, než se server zavře — odpověď je JSON,
-    // ne proud, takže se nic neztratí.
-    const telo = await odpoved.text();
-    const hlavicky = new Headers(odpoved.headers);
-    // Odpověď nese jména klientů a jejich objednávky; nemá co ležet
-    // v mezipaměti na cestě (pravidlo 8).
-    hlavicky.set("Cache-Control", "no-store");
-
-    return new Response(telo || null, { status: odpoved.status, headers: hlavicky });
+    return bezMezipameti(await transport.handleRequest(request));
   } finally {
     await transport.close();
     await server.close();
   }
+}
+
+/**
+ * Tělo se přečte celé dřív, než se server zavře — odpověď je JSON, ne
+ * proud, takže se nic neztratí. Odpověď nese jména klientů a jejich
+ * objednávky; nemá co ležet v mezipaměti na cestě (pravidlo 8).
+ */
+async function bezMezipameti(odpoved: Response): Promise<Response> {
+  const telo = await odpoved.text();
+  const hlavicky = new Headers(odpoved.headers);
+  hlavicky.set("Cache-Control", "no-store");
+  return new Response(telo || null, { status: odpoved.status, headers: hlavicky });
 }
 
 /** Server je bez stavu — proud událostí (GET) ani ukončení sezení (DELETE) nemá. */

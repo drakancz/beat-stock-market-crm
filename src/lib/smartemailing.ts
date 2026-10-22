@@ -4,6 +4,7 @@ import { zapisDoAuditu } from "@/lib/audit";
 import { vyresChyby, zapisChybu } from "@/lib/chyby";
 import { db } from "@/lib/db";
 import { nactiNastaveni } from "@/lib/nastaveni";
+import { jeUkazka, VYPNUTO_V_UKAZCE } from "@/lib/ukazka";
 import { tajemstviZProstredi } from "@/lib/verejne-api";
 
 /**
@@ -135,6 +136,9 @@ async function zavolej(
   cesta: string,
   pozadavek: { method: "GET" | "DELETE" } | { method: "POST"; body: unknown } = { method: "GET" },
 ): Promise<Vysledek<unknown>> {
+  // Ukázka nepošle ven nic (src/lib/ukazka.ts) — obrazovky zůstanou, volání ne.
+  if (jeUkazka()) return { ok: false, chyba: "nenastaveno", detail: VYPNUTO_V_UKAZCE };
+
   const jmeno = process.env.SMARTEMAILING_USERNAME;
   const klic = process.env.SMARTEMAILING_API_KEY;
   if (!jmeno || !klic) {

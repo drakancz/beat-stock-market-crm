@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { formatDatum } from "@/lib/format";
 import { odesliNovehoKlienta, odesliSouhlasZObjednavky } from "@/lib/smartemailing";
 import { sjednotTelefon, telefonKPorovnani } from "@/lib/telefon";
+import { dataKlienta, posliWebhook } from "@/lib/webhooky";
 
 /**
  * Příjem klientů z webu (`POST /api/leady`, Jakub, 12. 9. 2026).
@@ -562,6 +563,8 @@ export async function prijmiLead(
   if (data.souhlasMarketing) {
     after(() => odesliNovehoKlienta(klient.id, null));
   }
+  // Odchozí webhooky (19. 10. 2026) — bez kontaktů.
+  posliWebhook("klient.novy", () => dataKlienta(klient.id));
 
   return {
     ok: true,

@@ -46,7 +46,7 @@ const ZNACKA: Record<
   prihlaseni: { label: "Přihlášení", varianta: "outline" },
   neuspesne: { label: "Neúspěch", varianta: "destructive" },
   obrazovka: { label: "Obrazovka", varianta: "outline" },
-  mcp: { label: "AI (MCP)", varianta: "secondary" },
+  mcp: { label: "AI", varianta: "secondary" },
   zmena: { label: "Změna", varianta: "secondary" },
 };
 
@@ -102,7 +102,7 @@ function Volba({
  * sekce i tady. Obrazovka jen čte; záznamy nejde upravit ani smazat.
  *
  * Skládá se ze tří zdrojů: přihlášení a otevřené obrazovky
- * (`user_events`), změny z auditního logu a hovory. Záznam je po
+ * (`user_events`), změny z auditního logu. Záznam je po
  * obrazovkách, ne po kliknutích (Jakub, 10. 9. 2026).
  */
 export default async function AktivitaPage({ searchParams }: PageProps<"/nastaveni/aktivita">) {
@@ -159,7 +159,6 @@ export default async function AktivitaPage({ searchParams }: PageProps<"/nastave
                   <TableHead className="text-right">Čas v aplikaci</TableHead>
                   <TableHead className="text-right">Obrazovky</TableHead>
                   <TableHead className="text-right">Změny</TableHead>
-                  <TableHead className="text-right">Hovory</TableHead>
                   <TableHead className="text-right">Neúspěšná přihlášení</TableHead>
                 </TableRow>
               </TableHeader>
@@ -202,14 +201,6 @@ export default async function AktivitaPage({ searchParams }: PageProps<"/nastave
                     </TableCell>
                     <TableCell className="tabular text-right">{clovek.obrazovek}</TableCell>
                     <TableCell className="tabular text-right">{clovek.zmen}</TableCell>
-                    <TableCell className="tabular text-right whitespace-nowrap">
-                      {clovek.hovoru}
-                      {clovek.hovoru > 0 && (
-                        <span className="text-muted-foreground block text-xs">
-                          celkem {formatMinuty(clovek.minutHovoru)}
-                        </span>
-                      )}
-                    </TableCell>
                     <TableCell className="tabular text-right">
                       {clovek.neuspesnych > 0 ? (
                         <Badge variant="destructive">{clovek.neuspesnych}</Badge>
@@ -324,9 +315,8 @@ export default async function AktivitaPage({ searchParams }: PageProps<"/nastave
         odhlášení, neúspěšné pokusy o přihlášení k existujícím účtům, každá otevřená obrazovka a
         všechny změny z auditního logu. Kliknutí ani obsah formulářů se nezapisují.{" "}
         <strong>Čas v aplikaci je odhad</strong>: sčítá se doba od prvního do posledního kroku
-        každého sezení a přestávka delší než {PRESTAVKA_MINUT} minut sezení ukončí. Délka hovorů je
-        součet délek zapsaných u hovorů. Aktivita se zaznamenává od 10. 9. 2026; o záznamu je dobré
-        tým informovat.
+        každého sezení a přestávka delší než {PRESTAVKA_MINUT} minut sezení ukončí. Aktivita se
+        zaznamenává od 10. 9. 2026; o záznamu je dobré tým informovat.
       </PoznamkaPodCarou>
     </>
   );

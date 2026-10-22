@@ -31,9 +31,6 @@ export interface Polozka {
  * Hodnota se do formuláře posílá skrytým polem — `Command` je jen
  * ovládací prvek, prohlížeč o něm jako o součásti formuláře neví.
  * **Ať se vybere cokoli, server si položku ověří znovu.**
- *
- * (Starší sourozenec `src/app/(app)/klienti/pole-brokera.tsx` dělá totéž
- * jen pro brokery u klienta. Až se bude upravovat, dá se převést sem.)
  */
 export function PoleVyberu({
   polozky,

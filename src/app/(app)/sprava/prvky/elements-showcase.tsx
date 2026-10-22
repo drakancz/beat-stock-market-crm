@@ -84,18 +84,18 @@ export function ElementsShowcase() {
         <CardHeader>
           <CardTitle>Písmo</CardTitle>
           <CardDescription>
-            Čísla jsou v jednotné šířce, takže se řády pod sebou zarovnají a portfolio jde číst jako
+            Čísla jsou v jednotné šířce, takže se řády pod sebou zarovnají a tržby jdou číst jako
             výpis.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
             <span className="text-muted-foreground text-xs">Nadpisy — Geist</span>
-            <p className="font-heading text-2xl font-semibold">Portfolio klienta</p>
+            <p className="font-heading text-2xl font-semibold">Karta klienta</p>
           </div>
           <div>
             <span className="text-muted-foreground text-xs">Text — Geist</span>
-            <p className="text-sm">Klient má u dvou brokerů celkem osm pozic.</p>
+            <p className="text-sm">Klient má dvě zaplacené objednávky a jeden kurz.</p>
           </div>
           <div>
             <span className="text-muted-foreground text-xs">Čísla — Geist Mono</span>
@@ -188,7 +188,7 @@ export function ElementsShowcase() {
             </Select>
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="ukazka-zapis">Zápis z hovoru</Label>
+            <Label htmlFor="ukazka-zapis">Poznámka</Label>
             <Textarea id="ukazka-zapis" rows={3} placeholder="Co jste spolu řešili…" />
           </div>
           <div className="flex items-center gap-2">
@@ -216,16 +216,16 @@ export function ElementsShowcase() {
 
           <Alert variant="destructive">
             <AlertTriangle />
-            <AlertTitle>Portfolio se nepodařilo načíst</AlertTitle>
+            <AlertTitle>Objednávku se nepodařilo uložit</AlertTitle>
             <AlertDescription>
-              Broker odmítl klíč. Zkontroluj, jestli ho klient nezrušil.
+              Produkt už není v nabídce. Obnov stránku a zkus to znovu.
             </AlertDescription>
           </Alert>
 
           <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
-              onClick={() => toast.success("Hovor zapsán", { description: "Jan Novák · 14 minut" })}
+              onClick={() => toast.success("Poznámka uložena", { description: "Jan Novák" })}
             >
               Hláška o úspěchu
             </Button>
@@ -246,7 +246,7 @@ export function ElementsShowcase() {
                 <DialogHeader>
                   <DialogTitle>Smazat klienta?</DialogTitle>
                   <DialogDescription>
-                    Smazáním zmizí i hovory, úkoly a portfolia. Tuhle akci nejde vrátit zpět.
+                    Smazáním zmizí i úkoly a poznámky. Tuhle akci nejde vrátit zpět.
                   </DialogDescription>
                 </DialogHeader>
                 <DialogFooter>

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -10,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatDatumCas, formatMoney } from "@/lib/format";
+import { formatDatum, formatDatumCas, formatMoney } from "@/lib/format";
 import { pocet } from "@/lib/mnozne";
 import type { ObjednavkaKZobrazeni } from "@/lib/queries";
 import { ORDER_STATUS_LABEL } from "@/lib/types";
@@ -18,6 +19,8 @@ import { ORDER_STATUS_LABEL } from "@/lib/types";
 import { PoznamkaObjednavky } from "./poznamka-objednavky";
 import { SmazaniObjednavky } from "./smazani-objednavky";
 import { StavObjednavky } from "./stav-objednavky";
+import { FakturyObjednavky } from "./faktury-objednavky";
+import { VraceniPlatby } from "./vraceni-platby";
 
 /**
  * Objednávky v tabulce.
@@ -33,6 +36,20 @@ import { StavObjednavky } from "./stav-objednavky";
  * vidí jako popisek. Skrytí výběru je úklid, ne ochrana — rozhoduje
  * `requireAdmin()` v serverové akci.
  */
+/** Jak připomínka platby klientovi dorazila (`upozorniKlienta()`). */
+const DORUCENI: Record<string, string> = {
+  OZNAMENI: "oznámením",
+  EMAIL: "e-mailem",
+  JEN_UCET: "jen v klientské části",
+  BEZ_UCTU: "nedoručeno — klient nemá účet",
+};
+
+/** „Připomenuto 14. 10. 2026 (2×), e-mailem“. */
+function popisPripominky(pripominka: NonNullable<ObjednavkaKZobrazeni["pripominka"]>): string {
+  const jak = pripominka.doruceni ? DORUCENI[pripominka.doruceni] : null;
+  return `Připomenuto ${formatDatum(pripominka.kdy)} (${pripominka.pocet}×)${jak ? `, ${jak}` : ""}`;
+}
+
 export function SeznamObjednavek({
   objednavky,
   jeAdmin,
@@ -78,6 +95,11 @@ export function SeznamObjednavek({
                   <span className="text-muted-foreground block text-xs">
                     {pocet(objednavka.produkty.length, "produkt", "produkty", "produktů")}
                   </span>
+                  {objednavka.zKlientskeCasti && (
+                    <Badge variant="outline" className="mt-1">
+                      z klientské části
+                    </Badge>
+                  )}
                   {/*
                     Na telefonu se tabulka posouvá do strany, takže cena
                     i stav jsou mimo obraz. Tenhle řádek je má hned pod
@@ -87,6 +109,7 @@ export function SeznamObjednavek({
                   <span className="text-muted-foreground tabular block text-xs sm:hidden">
                     {formatMoney(objednavka.hodnota, objednavka.currency)} bez DPH ·{" "}
                     {ORDER_STATUS_LABEL[objednavka.status]}
+                    {objednavka.sleva && ` · kód ${objednavka.sleva.kod}`}
                   </span>
                 </TableCell>
 
@@ -126,15 +149,58 @@ export function SeznamObjednavek({
 
                 <TableCell className="tabular text-right whitespace-nowrap">
                   {formatMoney(objednavka.hodnota, objednavka.currency)}
+                  {/* Slevový kód (5A, 14. 10. 2026) — cena je už po slevě. */}
+                  {objednavka.sleva && (
+                    <span className="text-muted-foreground block text-xs">
+                      {objednavka.sleva.kod} −
+                      {formatMoney(objednavka.sleva.bezDph, objednavka.currency)}
+                    </span>
+                  )}
                 </TableCell>
 
                 {/* Kolik klient zaplatí. Dopočítává se ze sazby, neukládá se. */}
                 <TableCell className="tabular text-muted-foreground text-right whitespace-nowrap">
                   {formatMoney(objednavka.hodnotaSDph, objednavka.currency)}
+                  {objednavka.sleva && (
+                    <span className="block text-xs">
+                      −{formatMoney(objednavka.sleva.sDph, objednavka.currency)}
+                    </span>
+                  )}
                 </TableCell>
 
                 <TableCell>
                   <StavObjednavky objednavka={objednavka} smiMenit={jeAdmin} />
+                  {/* Faktura a dobropis (19. 10. 2026). */}
+                  <span className="mt-1 block">
+                    <FakturyObjednavky
+                      faktury={objednavka.faktury}
+                      cislo={objednavka.number}
+                      orderId={objednavka.id}
+                      zaplaceno={zaplaceno}
+                      jeAdmin={jeAdmin}
+                    />
+                  </span>
+                  {/* Platba přes bránu (19. 10. 2026) — vidí každý, vrátit jen admin. */}
+                  {objednavka.platba && (
+                    <span className="text-muted-foreground mt-1 block text-xs whitespace-nowrap">
+                      {objednavka.platba.vracena ? "Vráceno přes GoPay" : "Zaplaceno přes GoPay"}
+                      {jeAdmin && !objednavka.platba.vracena && (
+                        <>
+                          {" · "}
+                          <VraceniPlatby
+                            paymentId={objednavka.platba.id}
+                            cislo={objednavka.number}
+                          />
+                        </>
+                      )}
+                    </span>
+                  )}
+                  {/* Připomínka platby (5A, 11. 10. 2026) — u zaplacené už nezajímá. */}
+                  {objednavka.pripominka && !zaplaceno && (
+                    <span className="text-muted-foreground mt-1 block text-xs whitespace-nowrap">
+                      {popisPripominky(objednavka.pripominka)}
+                    </span>
+                  )}
                 </TableCell>
 
                 <TableCell>

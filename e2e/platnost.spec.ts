@@ -1,9 +1,6 @@
-import { readFile } from "node:fs/promises";
-
 import { expect, test, type Page } from "@playwright/test";
 
 import {
-  SOUBOR_UCTU,
   bezVodorovnehoPosuvu,
   cekejNaUspech,
   dotaz,
@@ -15,7 +12,8 @@ import {
 } from "./pomocne";
 
 /**
- * Platnost členství a úkol na prodloužení (Jakub, 24. 9. 2026).
+ * Platnost členství (Jakub, 24. 9. 2026). Úkol na prodloužení zanikl
+ * 20. 10. 2026.
  *
  * - Délka je u produktu v ceníku, mění ji administrátor.
  * - Platnost běží od zaplacení, další zaplacení navazuje.
@@ -229,36 +227,40 @@ test.describe("platnost očima administrátora", () => {
     await expect(radek.getByText("neomezeno")).toBeVisible();
   });
 
-  test("zaplacení nastaví konec a další zaplacení na něj naváže", async ({ page }) => {
-    const produkt = `Členství Rok ${pripona()}`;
-    const produktId = await zalozProdukt(produkt, 12);
-    const klient = `Platnost Klient ${pripona()}`;
-    const adresa = await zalozKlientaFormularem(page, klient);
+  test(
+    "zaplacení nastaví konec a další zaplacení na něj naváže",
+    { tag: "@telefon" },
+    async ({ page }) => {
+      const produkt = `Členství Rok ${pripona()}`;
+      const produktId = await zalozProdukt(produkt, 12);
+      const klient = `Platnost Klient ${pripona()}`;
+      const adresa = await zalozKlientaFormularem(page, klient);
 
-    // Než klient zaplatí, platnost nemá.
-    const prvni = await zalozObjednavku(idZAdresy(adresa), produktId);
-    await page.goto(adresa);
-    await expect(blokPlatnosti(page).getByText(produkt)).toHaveCount(0);
+      // Než klient zaplatí, platnost nemá.
+      const prvni = await zalozObjednavku(idZAdresy(adresa), produktId);
+      await page.goto(adresa);
+      await expect(blokPlatnosti(page).getByText(produkt)).toHaveCount(0);
 
-    await zaplat(page, prvni);
-    const zaRok = datum({ mesicu: 12 });
-    await otevriAzUvidis(page, adresa, blokPlatnosti(page).getByText(`do ${zaRok}`));
-    await expect(blokPlatnosti(page).getByText(produkt)).toBeVisible();
-    await bezVodorovnehoPosuvu(page);
+      await zaplat(page, prvni);
+      const zaRok = datum({ mesicu: 12 });
+      await otevriAzUvidis(page, adresa, blokPlatnosti(page).getByText(`do ${zaRok}`));
+      await expect(blokPlatnosti(page).getByText(produkt)).toBeVisible();
+      await bezVodorovnehoPosuvu(page);
 
-    // Prodloužení před koncem nepřijde o zbytek — navazuje.
-    const druha = await zalozObjednavku(idZAdresy(adresa), produktId);
-    await zaplat(page, druha);
-    const zaDvaRoky = datum({ mesicu: 24 });
-    await otevriAzUvidis(page, adresa, blokPlatnosti(page).getByText(`do ${zaDvaRoky}`));
+      // Prodloužení před koncem nepřijde o zbytek — navazuje.
+      const druha = await zalozObjednavku(idZAdresy(adresa), produktId);
+      await zaplat(page, druha);
+      const zaDvaRoky = datum({ mesicu: 24 });
+      await otevriAzUvidis(page, adresa, blokPlatnosti(page).getByText(`do ${zaDvaRoky}`));
 
-    // V seznamu klientů je sloupec Platnost do.
-    const radek = page.getByRole("row").filter({ hasText: klient });
-    await otevriAzUvidis(page, `/klienti?hledat=${encodeURIComponent(klient)}`, radek);
-    await expect(page.getByRole("columnheader", { name: "Platnost do" })).toBeVisible();
-    await expect(radek.getByText(zaDvaRoky)).toBeVisible();
-    await bezVodorovnehoPosuvu(page);
-  });
+      // V seznamu klientů je sloupec Platnost do.
+      const radek = page.getByRole("row").filter({ hasText: klient });
+      await otevriAzUvidis(page, `/klienti?hledat=${encodeURIComponent(klient)}`, radek);
+      await expect(page.getByRole("columnheader", { name: "Platnost do" })).toBeVisible();
+      await expect(radek.getByText(zaDvaRoky)).toBeVisible();
+      await bezVodorovnehoPosuvu(page);
+    },
+  );
 
   test("konec jde ručně upravit a zapíše se do auditu", async ({ page }) => {
     const produkt = `Členství Ručně ${pripona()}`;
@@ -295,23 +297,13 @@ test.describe("platnost očima administrátora", () => {
     expect(Number(zapis!.pocet)).toBe(2);
   });
 
-  test("nastavení prodloužení vybere člověka a počet dní", async ({ page }) => {
-    const ucty = JSON.parse(await readFile(SOUBOR_UCTU, "utf8")) as Record<
-      string,
-      { email: string }
-    >;
-
+  test("Nastavení → Prodloužení už úkol na prodloužení nenastavuje", async ({ page }) => {
+    // Úkol „zavolat kvůli prodloužení“ zanikl 20. 10. 2026 (Jakub).
     await page.goto("/nastaveni/prodlouzeni");
-    await expect(page.getByText("Úkoly na prodloužení členství")).toBeVisible();
-
-    // Všechny prohlížeče vybírají téhož člověka, takže si souběžné běhy
-    // nastavení nepřepisují. Podle e-mailu — „E2E Uživatel" je v testovací
-    // databázi víckrát, proto výběr e-mail ukazuje.
-    await vyber(page, "Kdo prodloužení řeší", ucty.uzivatel!.email);
-    await page.getByLabel("Kolik dní před koncem").fill("14");
-    await page.getByRole("button", { name: "Uložit" }).click();
-    await cekejNaUspech(page, /Nastavení prodloužení je uložené|Nic se nezměnilo|Uloženo/);
-    await expect(page.getByText("Nikdo vybraný není")).toHaveCount(0);
+    await expect(page.getByText("Končí v nejbližších 14 dnech")).toBeVisible();
+    await expect(page.getByText("Úkoly na prodloužení členství")).toHaveCount(0);
+    await expect(page.getByLabel("Kdo prodloužení řeší")).toHaveCount(0);
+    await expect(page.getByLabel("Úkol zavolat dostane")).toHaveCount(0);
   });
 });
 
@@ -336,22 +328,12 @@ test.describe("platnost očima uživatele", () => {
     await expect(page.getByRole("button", { name: "Upravit platnost" })).toHaveCount(0);
   });
 
-  test("úkol na prodloužení se objeví v Mém dni a po zaplacení zmizí", async ({
+  test("brzký konec členství úkol nezaloží, je jen v přehledu Prodloužení", async ({
     page,
     browser,
   }) => {
-    const ucty = JSON.parse(await readFile(SOUBOR_UCTU, "utf8")) as Record<string, { id: string }>;
-
-    // Prodloužení řeší zkušební uživatel — ve všech prohlížečích stejný.
-    await dotaz(
-      `INSERT INTO "company_settings" ("id", "renewalUserId", "renewalLeadDays", "updatedAt")
-       VALUES ('firma', $1, 14, now())
-       ON CONFLICT ("id") DO UPDATE SET "renewalUserId" = $1, "renewalLeadDays" = 14`,
-      [ucty.uzivatel!.id],
-    );
-
     const produkt = `Členství Končí ${pripona()}`;
-    const produktId = await zalozProdukt(produkt, 12);
+    await zalozProdukt(produkt, 12);
     const klient = `Platnost Konci ${pripona()}`;
     const adresa = await zalozKlientaFormularem(page, klient);
 
@@ -367,25 +349,18 @@ test.describe("platnost očima uživatele", () => {
     await adminStranka.getByRole("button", { name: "Uložit" }).click();
     await cekejNaUspech(adminStranka, `${produkt} platí do ${konec}.`);
 
-    // Úkol vznikne, když si uživatel otevře Dashboard.
-    const ukol = page.getByText(`Prodloužení: ${produkt} končí ${konec}`);
-    await otevriAzUvidis(page, "/dashboard", ukol);
-    await expect(
-      page.locator("li").filter({ has: ukol }).getByRole("link", { name: klient }),
-    ).toBeVisible();
-
-    // Druhé otevření nezaloží druhý úkol.
-    await page.reload();
-    await expect(ukol).toHaveCount(1);
-
-    // Klient prodlouží — úkol se sám odškrtne a z Mého dne zmizí.
-    const cislo = await zalozObjednavku(idZAdresy(adresa), produktId);
-    await zaplat(adminStranka, cislo);
+    // Konec za pět dní je v přehledu administrátora …
+    await otevriAzUvidis(
+      adminStranka,
+      "/nastaveni/prodlouzeni",
+      adminStranka.getByRole("link", { name: klient }),
+    );
     await admin.close();
 
+    // … ale úkol „Prodloužení: …“ v Mém dni nevznikne (zrušeno 20. 10. 2026).
     await page.goto("/dashboard");
     await expect(page.getByText("Moje úkoly", { exact: true })).toBeVisible();
-    await expect(ukol).toHaveCount(0);
+    await expect(page.getByText(`Prodloužení: ${produkt}`)).toHaveCount(0);
   });
 });
 
@@ -420,25 +395,29 @@ test.describe("konec členství s povoleným přístupem", () => {
     }
   }
 
-  test("prošlé členství s přístupem se zvýrazní, běžící ne", async ({ page }) => {
-    const znacka = pripona();
-    const skoncil = `Konec Prosle ${znacka}`;
-    const bezi = `Konec Bezi ${znacka}`;
-    await klientSPlatnostmi(skoncil, [-3]);
-    // Jedno skončilo, druhé běží — klient zvýrazněný není.
-    await klientSPlatnostmi(bezi, [-3, 30]);
+  test(
+    "prošlé členství s přístupem se zvýrazní, běžící ne",
+    { tag: "@telefon" },
+    async ({ page }) => {
+      const znacka = pripona();
+      const skoncil = `Konec Prosle ${znacka}`;
+      const bezi = `Konec Bezi ${znacka}`;
+      await klientSPlatnostmi(skoncil, [-3]);
+      // Jedno skončilo, druhé běží — klient zvýrazněný není.
+      await klientSPlatnostmi(bezi, [-3, 30]);
 
-    const radekSkoncil = page.getByRole("row").filter({ hasText: skoncil });
-    await otevriAzUvidis(page, `/klienti?hledat=${encodeURIComponent(znacka)}`, radekSkoncil);
+      const radekSkoncil = page.getByRole("row").filter({ hasText: skoncil });
+      await otevriAzUvidis(page, `/klienti?hledat=${encodeURIComponent(znacka)}`, radekSkoncil);
 
-    await expect(
-      page.getByText(/skončilo členství.*přístup do programu (má|mají) pořád povolený/),
-    ).toBeVisible();
-    await expect(page.getByText("Vypnout přístup může administrátor.")).toBeVisible();
-    await expect(radekSkoncil).toHaveClass(/bg-konec-clenstvi/);
-    await expect(page.getByRole("row").filter({ hasText: bezi })).not.toHaveClass(
-      /bg-konec-clenstvi/,
-    );
-    await bezVodorovnehoPosuvu(page);
-  });
+      await expect(
+        page.getByText(/skončilo členství.*přístup do programu (má|mají) pořád povolený/),
+      ).toBeVisible();
+      await expect(page.getByText("Vypnout přístup může administrátor.")).toBeVisible();
+      await expect(radekSkoncil).toHaveClass(/bg-konec-clenstvi/);
+      await expect(page.getByRole("row").filter({ hasText: bezi })).not.toHaveClass(
+        /bg-konec-clenstvi/,
+      );
+      await bezVodorovnehoPosuvu(page);
+    },
+  );
 });

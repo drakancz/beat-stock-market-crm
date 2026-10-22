@@ -109,7 +109,10 @@ test.describe("pozvánka a přihlášení", () => {
     const klient = await zalozKlienta(`Klient Pozvaný ${pripona()}`);
 
     await page.goto(`/klienti/${klient.id}`);
-    await expect(page.getByText("Nemá účet")).toBeVisible();
+    // „Nemá účet“ je i v řádku Naposledy v klientské části — proto řádek.
+    await expect(
+      page.getByText("Klientská část", { exact: true }).locator("xpath=..").getByText("Nemá účet"),
+    ).toBeVisible();
     await page.getByRole("button", { name: "Pozvat do klientské části" }).click();
     await cekejNaUspech(page, "Pozvánka do klientské části odešla");
     await expect(page.getByText(/Pozvánka odeslána/)).toBeVisible();
@@ -144,7 +147,7 @@ test.describe("pozvánka a přihlášení", () => {
     await expect(klientskaStranka).toHaveURL(/\/ucet\/prihlaseni/);
 
     // Na kartě je klient aktivní a pozvat ho znovu nejde.
-    await otevriAzUvidis(page, `/klienti/${klient.id}`, page.getByText(/^Aktivní/));
+    await otevriAzUvidis(page, `/klienti/${klient.id}`, page.getByText(/^Aktivní,/));
     await expect(page.getByRole("button", { name: /Pozvat|Poslat pozvánku/ })).toHaveCount(0);
 
     await klientskaStranka.context().close();
@@ -270,8 +273,12 @@ test.describe("přihlášení klienta", () => {
     await expect(page).toHaveURL(/\/ucet\/prihlaseni/);
     await bezVodorovnehoPosuvu(page);
 
-    await page.getByRole("link", { name: "Ochrana osobních údajů" }).click();
-    await expect(page).toHaveURL(/\/ucet\/zasady$/);
+    // Na pomalém stroji (GitHub) může klik přijít dřív, než stránka ožije,
+    // a nic se nestane — proto se klik opakuje, dokud se adresa nezmění.
+    await expect(async () => {
+      await page.getByRole("link", { name: "Ochrana osobních údajů" }).click();
+      await expect(page).toHaveURL(/\/ucet\/zasady$/, { timeout: 5_000 });
+    }).toPass({ timeout: 60_000 });
     await expect(
       page.getByRole("heading", { name: "Zásady ochrany osobních údajů" }),
     ).toBeVisible();

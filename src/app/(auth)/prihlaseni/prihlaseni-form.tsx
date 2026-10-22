@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
-import { Loader2, ShieldCheck } from "lucide-react";
+import { FlaskConical, Loader2, ShieldCheck } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -40,7 +40,7 @@ function bezpecnyCil(pozadovano: string | null): string {
  * Že účet druhý faktor má, se tím **neprozradí nikomu, kdo nezná heslo** —
  * doptání přijde až po jeho ověření.
  */
-export function PrihlaseniForm() {
+export function PrihlaseniForm({ ukazka }: { ukazka?: { email: string; heslo: string } }) {
   const router = useRouter();
   const parametry = useSearchParams();
 
@@ -60,15 +60,21 @@ export function PrihlaseniForm() {
 
   async function odeslat(event: React.SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    await prihlasit(
+      String(data.get("email") ?? ""),
+      String(data.get("heslo") ?? ""),
+      String(data.get("kod") ?? "").trim(),
+    );
+  }
+
+  async function prihlasit(email: string, heslo: string, kod = "") {
     setChyba(null);
     setOdesila(true);
 
-    const data = new FormData(event.currentTarget);
-    const kod = String(data.get("kod") ?? "").trim();
-
     const odpoved = await signIn("credentials", {
-      email: String(data.get("email") ?? ""),
-      heslo: String(data.get("heslo") ?? ""),
+      email,
+      heslo,
       ...(kod ? { kod } : {}),
       redirect: false,
     });
@@ -100,6 +106,38 @@ export function PrihlaseniForm() {
    */
   return (
     <form onSubmit={odeslat} method="post" className="space-y-4">
+      {/* Ukázkový režim (src/lib/ukazka.ts): údaje jsou veřejné schválně. */}
+      {ukazka && !kodPotreba && (
+        <div className="bg-muted space-y-3 rounded-lg border p-4">
+          <div className="flex items-start gap-2 text-sm">
+            <FlaskConical className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <p>
+              <strong>Ukázka pro zájemce.</strong> Data jsou vymyšlená a každou noc se obnoví —
+              klidně cokoli změň nebo smaž.
+            </p>
+          </div>
+          <dl className="text-muted-foreground grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+            <dt>E-mail</dt>
+            <dd className="text-foreground font-mono break-all">{ukazka.email}</dd>
+            <dt>Heslo</dt>
+            <dd className="text-foreground font-mono break-all">{ukazka.heslo}</dd>
+          </dl>
+          <div className="flex flex-col gap-2">
+            <Button
+              type="button"
+              className="w-full"
+              disabled={odesila}
+              onClick={() => prihlasit(ukazka.email, ukazka.heslo)}
+            >
+              Vyzkoušet jako člen týmu
+            </Button>
+            <Button asChild variant="outline" className="w-full">
+              <Link href="/ucet/prihlaseni">Vyzkoušet jako klient</Link>
+            </Button>
+          </div>
+        </div>
+      )}
+
       {chyba && (
         <Alert variant="destructive">
           <AlertDescription>{chyba}</AlertDescription>

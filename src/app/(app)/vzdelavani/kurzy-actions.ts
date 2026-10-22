@@ -5,7 +5,10 @@ import { z } from "zod";
 
 import { zapisDoAuditu } from "@/lib/audit";
 import { db } from "@/lib/db";
+import { denSchema } from "@/lib/obdobi";
 import { requireAdmin } from "@/lib/session";
+import { kvizSchema } from "@/lib/vzdelavani/kvizy";
+import { NEJVIC_DNI, popisPravidla } from "@/lib/vzdelavani/odemykani";
 import { CHYBA_VIDEA, rozpoznejVideo } from "@/lib/vzdelavani/video";
 
 /**
@@ -141,6 +144,21 @@ const lekceSchema = z.object({
     .trim()
     .max(500, "Odkaz na video je příliš dlouhý.")
     .refine((odkaz) => odkaz === "" || rozpoznejVideo(odkaz) !== null, CHYBA_VIDEA),
+  // Postupné odemykání (5C, 18. 10. 2026). Prázdné = hned.
+  unlockAfterDays: z
+    .string()
+    .trim()
+    .refine(
+      (dni) => dni === "" || (/^\d{1,3}$/.test(dni) && Number(dni) <= NEJVIC_DNI),
+      `Počet dní po zakoupení musí být 0–${NEJVIC_DNI}.`,
+    )
+    .transform((dni) => (dni === "" || Number(dni) === 0 ? null : Number(dni))),
+  unlockOn: z
+    .string()
+    .trim()
+    .refine((den) => den === "" || denSchema.safeParse(den).success, "Datum otevření není platné.")
+    .transform((den) => (den === "" ? null : denSchema.parse(den))),
+  unlockAfterPrevious: z.enum(["on"]).nullable(),
 });
 
 export async function ulozLekci(formData: FormData): Promise<VysledekVzdelavani> {
@@ -152,9 +170,17 @@ export async function ulozLekci(formData: FormData): Promise<VysledekVzdelavani>
     title: formData.get("title") ?? "",
     body: formData.get("body") ?? "",
     videoUrl: formData.get("videoUrl") ?? "",
+    unlockAfterDays: formData.get("unlockAfterDays") ?? "",
+    unlockOn: formData.get("unlockOn") ?? "",
+    unlockAfterPrevious: formData.get("unlockAfterPrevious"),
   });
   if (!vstup.success) return { ok: false, chyba: vstup.error.issues[0]!.message };
   const { id, courseId, title, body, videoUrl } = vstup.data;
+  const odemceni = {
+    unlockAfterDays: vstup.data.unlockAfterDays,
+    unlockOn: vstup.data.unlockOn,
+    unlockAfterPrevious: vstup.data.unlockAfterPrevious === "on",
+  };
   if (!body && !videoUrl) return { ok: false, chyba: "Lekce potřebuje text, video, nebo obojí." };
 
   const kurz = await db.course.findFirst({
@@ -176,7 +202,7 @@ export async function ulozLekci(formData: FormData): Promise<VysledekVzdelavani>
     if (id) {
       await tx.courseLesson.update({
         where: { id },
-        data: { title, body, videoUrl: videoUrl || null },
+        data: { title, body, videoUrl: videoUrl || null, ...odemceni },
       });
     } else {
       const posledni = await tx.courseLesson.aggregate({
@@ -189,6 +215,7 @@ export async function ulozLekci(formData: FormData): Promise<VysledekVzdelavani>
           title,
           body,
           videoUrl: videoUrl || null,
+          ...odemceni,
           position: (posledni._max.position ?? 0) + 1,
         },
         select: { id: true },
@@ -200,7 +227,7 @@ export async function ulozLekci(formData: FormData): Promise<VysledekVzdelavani>
       entity: "course_lessons",
       entityId: lekceId!,
       action: id ? "lekce.upravena" : "lekce.zalozena",
-      after: { title, kurz: courseId },
+      after: { title, kurz: courseId, odemceni: popisPravidla(odemceni) },
     });
   });
 
@@ -265,4 +292,79 @@ export async function posunLekci(idRaw: string, smerRaw: string): Promise<Vysled
 
   obnov(lekce.courseId);
   return { ok: true, zprava: "Pořadí je změněné." };
+}
+
+/* ---------- Kvíz u lekce (Fáze 5C, 11. 10. 2026) ---------- */
+
+/**
+ * Uloží kvíz u lekce — nový, nebo přepíše otázky stávajícího. Smazaný
+ * kvíz u téže lekce se tím vrátí. **Klientům, kteří kvíz už splnili,
+ * splnění zůstává** (Jakub, 11. 10. 2026). Do auditu jde počet otázek,
+ * ne jejich text.
+ */
+export async function ulozKviz(
+  lekceIdRaw: string,
+  otazkyRaw: unknown,
+): Promise<VysledekVzdelavani> {
+  const admin = await requireAdmin();
+
+  const lekceId = ID.safeParse(lekceIdRaw);
+  if (!lekceId.success) return { ok: false, chyba: "Neplatný požadavek." };
+  const otazky = kvizSchema.safeParse(otazkyRaw);
+  if (!otazky.success) return { ok: false, chyba: otazky.error.issues[0]!.message };
+
+  const lekce = await db.courseLesson.findFirst({
+    where: { id: lekceId.data, deletedAt: null, course: { deletedAt: null } },
+    select: { id: true, title: true, courseId: true, kviz: { select: { deletedAt: true } } },
+  });
+  if (!lekce) return { ok: false, chyba: "Taková lekce neexistuje." };
+  const novy = !lekce.kviz || lekce.kviz.deletedAt !== null;
+
+  await db.$transaction(async (tx) => {
+    const kviz = await tx.lessonQuiz.upsert({
+      where: { lessonId: lekce.id },
+      create: { lessonId: lekce.id, questions: otazky.data },
+      update: { questions: otazky.data, deletedAt: null },
+      select: { id: true },
+    });
+    await zapisDoAuditu(tx, {
+      userId: admin.id,
+      entity: "lesson_quizzes",
+      entityId: kviz.id,
+      action: "kviz.ulozen",
+      after: { lekce: lekce.title, kurz: lekce.courseId, otazek: otazky.data.length, novy },
+    });
+  });
+
+  obnov(lekce.courseId);
+  revalidatePath(`/ucet/lekce/${lekce.id}`);
+  return { ok: true, zprava: `Kvíz je uložený: ${lekce.title}.` };
+}
+
+/** Smaže kvíz u lekce (`deletedAt`). Splnění a vydané certifikáty zůstávají. */
+export async function smazKviz(lekceIdRaw: string): Promise<VysledekVzdelavani> {
+  const admin = await requireAdmin();
+  const lekceId = ID.safeParse(lekceIdRaw);
+  if (!lekceId.success) return { ok: false, chyba: "Neplatný požadavek." };
+
+  const kviz = await db.lessonQuiz.findFirst({
+    where: { lessonId: lekceId.data, deletedAt: null, lesson: { deletedAt: null } },
+    select: { id: true, lesson: { select: { id: true, title: true, courseId: true } } },
+  });
+  if (!kviz) return { ok: false, chyba: "Tahle lekce kvíz nemá." };
+
+  await db.$transaction(async (tx) => {
+    await tx.lessonQuiz.update({ where: { id: kviz.id }, data: { deletedAt: new Date() } });
+    await zapisDoAuditu(tx, {
+      userId: admin.id,
+      entity: "lesson_quizzes",
+      entityId: kviz.id,
+      action: "kviz.smazan",
+      before: { lekce: kviz.lesson.title, kurz: kviz.lesson.courseId },
+    });
+  });
+
+  obnov(kviz.lesson.courseId);
+  revalidatePath(`/ucet/lekce/${kviz.lesson.id}`);
+  return { ok: true, zprava: `Kvíz je smazaný: ${kviz.lesson.title}.` };
 }

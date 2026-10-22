@@ -84,11 +84,6 @@ export default async function BrokeriPage({ searchParams }: PageProps<"/brokeri"
       website: true,
       logo: true,
       note: true,
-      _count: {
-        // Objednávky se u brokera nevedou (od 22. 9. 2026), takže se
-        // nepočítají — sloupec „Případy" ze seznamu zmizel s nimi.
-        select: { portfolios: true },
-      },
     },
   });
 
@@ -111,7 +106,7 @@ export default async function BrokeriPage({ searchParams }: PageProps<"/brokeri"
           <h2 className="text-2xl font-semibold">Brokeři</h2>
           <p className="text-muted-foreground mt-1 text-sm">
             {jeAdmin
-              ? "Seznam, ze kterého se vybírá u portfolia klienta."
+              ? "Katalog brokerů, u kterých klienti investují."
               : "Seznam brokerů, u kterých klienti investují. Upravovat ho může administrátor."}
           </p>
         </div>
@@ -122,9 +117,8 @@ export default async function BrokeriPage({ searchParams }: PageProps<"/brokeri"
         <CardHeader>
           <CardTitle>Seznam brokerů</CardTitle>
           <CardDescription>
-            Sloupec Automatické napojení říká, jestli broker umí vydat klíč jen pro čtení, kterým se
-            portfolio načte samo. Klíč vkládá vždy sám klient ve své části systému — do CRM se
-            nezadává.
+            Sloupec Automatické napojení říká, jestli broker umí vydat klíč jen pro čtení. Klíč
+            vkládá vždy sám klient ve své části systému — do CRM se nezadává.
           </CardDescription>
           <CardAction>
             <span className="text-muted-foreground tabular text-sm">{celkem} v seznamu</span>
@@ -158,7 +152,6 @@ export default async function BrokeriPage({ searchParams }: PageProps<"/brokeri"
                   website: broker.website,
                   logo: broker.logo,
                   note: broker.note,
-                  pocetPortfolii: broker._count.portfolios,
                 }))}
               />
 

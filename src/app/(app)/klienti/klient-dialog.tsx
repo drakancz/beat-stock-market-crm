@@ -7,7 +7,6 @@ import { toast } from "sonner";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -29,11 +28,6 @@ import { CLIENT_STAGES } from "@/lib/types";
 import type { ClientStage } from "@/generated/prisma/enums";
 
 import { upravKlienta, zalozKlienta } from "./actions";
-import { BrokeriKlienta, type BrokerKlienta } from "./brokeri-klienta";
-import { PoleBrokera } from "./pole-brokera";
-import { BEZ_BROKERA, type VolbaBrokera } from "./vyber-brokera";
-
-const MENY = ["CZK", "EUR", "USD"] as const;
 
 /** Zdroj klienta k výběru. Seznam spravuje administrátor v Nastavení. */
 export interface VolbaZdroje {
@@ -53,7 +47,6 @@ export interface KlientKUprave {
   sourceId: string;
   stage: ClientStage;
   souhlasMarketing: boolean;
-  souhlasNahravani: boolean;
 }
 
 /**
@@ -63,20 +56,18 @@ export interface KlientKUprave {
  *
  * Výběr „Přiřazený obchodník" tu byl do 22. 9. 2026. Klienti se nikomu
  * nepřiřazují, takže zmizel i s pravidlem, kdo smí přiřazení měnit.
+ *
+ * Broker u klienta (výběr při založení, oddíl Brokeři v okně Upravit)
+ * zmizel 20. 10. 2026 spolu s portfolii (Jakub). Co klient o brokerech
+ * uvedl na webu, je dál na kartě jako „Broker podle klienta“.
  */
 export function KlientDialog({
-  brokeri,
   zdroje,
   klient,
-  brokeriKlienta = [],
 }: {
   zdroje: VolbaZdroje[];
-  /** Brokeři k výběru: při zakládání všichni, při úpravě ti, které klient ještě nemá. */
-  brokeri: VolbaBrokera[];
   /** Když chybí, formulář zakládá nového klienta. */
   klient?: KlientKUprave;
-  /** U koho klient portfolio má — oddíl Brokeři při úpravě (od 25. 9. 2026). */
-  brokeriKlienta?: BrokerKlienta[];
 }) {
   const router = useRouter();
   const [otevreno, setOtevreno] = useState(false);
@@ -94,10 +85,6 @@ export function KlientDialog({
   /** Co má být v políčku: co člověk naposledy napsal, jinak uložená hodnota. */
   const hodnota = (klic: string, vychozi = "") =>
     zadane[klic] ?? ((klient as Record<string, unknown> | undefined)?.[klic] as string) ?? vychozi;
-
-  /** Zaškrtnutí se v odeslaných datech objeví jen tehdy, když bylo zapnuté. */
-  const zaskrtnuto = (klic: "souhlasNahravani") =>
-    pokus > 0 ? klic in zadane : (klient?.[klic] ?? false);
 
   /**
    * Souhlas s marketingem: „ano", „ne", nebo u nového klienta nic — volba
@@ -266,47 +253,6 @@ export function KlientDialog({
               </div>
             </div>
 
-            {/*
-              Broker se tu vybírá jen při zakládání. U existujícího klienta
-              se přiřazení mění v oddílu Brokeři pod formulářem, kde jich
-              může být víc a mění se hned (od 25. 9. 2026).
-            */}
-            {!upravuje && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="brokerId">Broker</Label>
-                  <PoleBrokera
-                    brokeri={brokeri}
-                    nepovinny
-                    vychozi={hodnota("brokerId", BEZ_BROKERA)}
-                  />
-                  <p className="text-muted-foreground text-xs leading-relaxed">
-                    U koho má klient účet — piš část názvu, seznam se zúží. Další brokery přidáš v
-                    okně Upravit.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="currency">Měna účtu</Label>
-                  <Select name="currency" defaultValue={hodnota("currency", "CZK")}>
-                    <SelectTrigger id="currency" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {MENY.map((mena) => (
-                        <SelectItem key={mena} value={mena}>
-                          {mena}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-muted-foreground text-xs leading-relaxed">
-                    Použije se jen tehdy, když je vybraný broker.
-                  </p>
-                </div>
-              </div>
-            )}
-
             <fieldset className="space-y-3 rounded-md border p-3">
               <legend className="px-1 text-sm font-medium">Souhlasy</legend>
 
@@ -343,22 +289,9 @@ export function KlientDialog({
                 </div>
               </div>
 
-              <div className="flex items-start gap-2.5">
-                <Checkbox
-                  id="souhlasNahravani"
-                  name="souhlasNahravani"
-                  defaultChecked={zaskrtnuto("souhlasNahravani")}
-                  className="mt-0.5"
-                />
-                <Label htmlFor="souhlasNahravani" className="text-sm leading-relaxed font-normal">
-                  Souhlas s nahráváním hovoru
-                </Label>
-              </div>
-
               <p className="text-muted-foreground text-xs leading-relaxed">
                 Souhlas s marketingem je potřeba vždy vybrat. Bez zaznamenaného souhlasu systém
-                neodešle marketingové sdělení ani neuloží nahrávku. Datum se ukládá k okamžiku
-                udělení souhlasu.
+                neodešle marketingové sdělení. Datum se ukládá k okamžiku udělení souhlasu.
               </p>
             </fieldset>
           </div>
@@ -373,16 +306,6 @@ export function KlientDialog({
             </Button>
           </DialogFooter>
         </form>
-
-        {/* Brokeři mají vlastní formulář — vnořit ho do hlavního HTML nedovolí. */}
-        {upravuje && (
-          <BrokeriKlienta
-            klientId={klient.id}
-            klientJmeno={klient.name}
-            brokeri={brokeriKlienta}
-            volni={brokeri}
-          />
-        )}
       </DialogContent>
     </Dialog>
   );

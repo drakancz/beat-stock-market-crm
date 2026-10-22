@@ -121,8 +121,8 @@ export function BrokerDialog({ broker }: { broker?: BrokerKUprave }) {
           <DialogHeader>
             <DialogTitle>{upravuje ? "Upravit brokera" : "Nový broker"}</DialogTitle>
             <DialogDescription>
-              Seznam brokerů, ze kterého se vybírá u portfolia klienta. Přístup ke svému účtu si
-              vkládá sám klient — sem žádný klíč nepatří.
+              Katalog brokerů, u kterých klienti investují. Přístup ke svému účtu si vkládá sám
+              klient — sem žádný klíč nepatří.
             </DialogDescription>
           </DialogHeader>
 
@@ -161,8 +161,7 @@ export function BrokerDialog({ broker }: { broker?: BrokerKUprave }) {
                 </SelectContent>
               </Select>
               <p className="text-muted-foreground text-xs leading-relaxed">
-                Umí broker vydat klíč jen pro čtení, kterým se portfolio načte samo? Když ne, zadává
-                se ručně nebo z výpisu.
+                Umí broker vydat klíč jen pro čtení? Jen informace pro tým.
               </p>
             </div>
 

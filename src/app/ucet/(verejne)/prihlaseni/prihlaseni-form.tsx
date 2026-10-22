@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { Loader2, ShieldCheck } from "lucide-react";
+import { FlaskConical, Loader2, ShieldCheck } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,7 @@ import { prihlasitKlienta } from "./actions";
  * e-mail a heslo, a když má účet dvoufázové ověření, doptá se na kód.
  * Že účet kód má, se dozví jen ten, kdo zná heslo.
  */
-export function PrihlaseniKlientaForm() {
+export function PrihlaseniKlientaForm({ ukazka }: { ukazka?: { email: string; heslo: string } }) {
   const router = useRouter();
   const parametry = useSearchParams();
   // Po změně hesla v profilu — jen věta podle pevné hodnoty, nic z adresy se nevypisuje.
@@ -31,10 +31,22 @@ export function PrihlaseniKlientaForm() {
 
   async function odeslat(event: React.SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
+    await prihlasit(new FormData(event.currentTarget));
+  }
+
+  /** Ukázkový režim: přihlášení jedním klikem veřejnými údaji. */
+  async function prihlasitUkazku(udaje: { email: string; heslo: string }) {
+    const data = new FormData();
+    data.set("email", udaje.email);
+    data.set("heslo", udaje.heslo);
+    await prihlasit(data);
+  }
+
+  async function prihlasit(data: FormData) {
     setChyba(null);
     setOdesila(true);
 
-    const vysledek = await prihlasitKlienta(new FormData(event.currentTarget));
+    const vysledek = await prihlasitKlienta(data);
     setOdesila(false);
 
     if (vysledek.ok) {
@@ -52,6 +64,38 @@ export function PrihlaseniKlientaForm() {
   // `method="post"`: kdyby obsluha neproběhla, heslo nesmí skončit v adrese.
   return (
     <form onSubmit={odeslat} method="post" className="space-y-4">
+      {/* Ukázkový režim (src/lib/ukazka.ts): údaje jsou veřejné schválně. */}
+      {ukazka && !kodPotreba && (
+        <div className="bg-muted space-y-3 rounded-lg border p-4">
+          <div className="flex items-start gap-2 text-sm">
+            <FlaskConical className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <p>
+              <strong>Ukázka pro zájemce.</strong> Takhle vypadá aplikace pro klienty — kurzy,
+              objednávky, členství. Data jsou vymyšlená a každou noc se obnoví.
+            </p>
+          </div>
+          <dl className="text-muted-foreground grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+            <dt>E-mail</dt>
+            <dd className="text-foreground font-mono break-all">{ukazka.email}</dd>
+            <dt>Heslo</dt>
+            <dd className="text-foreground font-mono break-all">{ukazka.heslo}</dd>
+          </dl>
+          <div className="flex flex-col gap-2">
+            <Button
+              type="button"
+              className="w-full"
+              disabled={odesila}
+              onClick={() => prihlasitUkazku(ukazka)}
+            >
+              Vyzkoušet jako klient
+            </Button>
+            <Button asChild variant="outline" className="w-full">
+              <Link href="/prihlaseni">Vyzkoušet jako člen týmu</Link>
+            </Button>
+          </div>
+        </div>
+      )}
+
       {chyba && (
         <Alert variant="destructive">
           <AlertDescription>{chyba}</AlertDescription>

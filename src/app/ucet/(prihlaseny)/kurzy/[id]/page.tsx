@@ -1,12 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CheckCircle2, Circle } from "lucide-react";
+import { ArrowLeft, Award, CheckCircle2, Circle, Download, Lock } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { db } from "@/lib/db";
+import { formatDatum } from "@/lib/format";
 import { requireKlient } from "@/lib/klient/sezeni";
+import { pocet } from "@/lib/mnozne";
 import { idZAdresy } from "@/lib/parametry";
+import { coChybiKCertifikatu } from "@/lib/vzdelavani/certifikaty";
 import { nactiKurzKlienta } from "@/lib/vzdelavani/klient";
 
 import { Postup } from "../postup";
@@ -25,7 +30,19 @@ export default async function KurzKlientaPage({ params }: PageProps<"/ucet/kurzy
   if (!kurz) notFound();
 
   const hotovo = kurz.lekce.filter((lekce) => lekce.hotovo).length;
-  const dalsi = kurz.lekce.find((lekce) => !lekce.hotovo) ?? kurz.lekce[0];
+  // Zamčené lekce (5C) tlačítko nenabídne; když zbývají jen ty, žádné není.
+  const dalsi =
+    hotovo === kurz.lekce.length
+      ? kurz.lekce[0]
+      : kurz.lekce.find((lekce) => !lekce.hotovo && !lekce.zamcena);
+  // Certifikát (5C): stažení, nebo co k němu ještě chybí.
+  const [certifikat, chybi] = await Promise.all([
+    db.courseCertificate.findUnique({
+      where: { clientId_courseId: { clientId: klient.clientId, courseId: kurz.id } },
+      select: { id: true, number: true, issuedAt: true },
+    }),
+    coChybiKCertifikatu(klient.clientId, kurz.id),
+  ]);
 
   return (
     <>
@@ -54,33 +71,88 @@ export default async function KurzKlientaPage({ params }: PageProps<"/ucet/kurzy
         </Button>
       )}
 
+      {certifikat ? (
+        <Card>
+          <CardContent className="flex flex-wrap items-center gap-4">
+            <Award className="text-primary size-8 shrink-0" aria-hidden />
+            <div className="min-w-0 flex-1">
+              <p className="font-medium">Certifikát o absolvování kurzu</p>
+              <p className="text-muted-foreground text-sm">
+                <span className="font-mono">{certifikat.number}</span> · vydaný{" "}
+                {formatDatum(certifikat.issuedAt)}
+              </p>
+            </div>
+            <Button asChild variant="outline">
+              <a href={`/ucet/certifikat/${certifikat.id}`} download>
+                <Download />
+                Stáhnout certifikát (PDF)
+              </a>
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        chybi && (
+          <p className="text-muted-foreground text-sm">
+            <Award className="mr-1.5 inline size-4 align-[-3px]" aria-hidden />
+            Certifikát dostanete, až budete mít hotové všechny lekce a splněné kvízy.
+            {chybi.lekciZbyva > 0 &&
+              ` Zbývá ${pocet(chybi.lekciZbyva, "lekce", "lekce", "lekcí")}.`}
+            {chybi.kvizyZbyva.length > 0 &&
+              ` Nesplněné kvízy u lekcí: ${chybi.kvizyZbyva.join(", ")}.`}
+          </p>
+        )
+      )}
+
       <Card>
         <CardContent>
           {kurz.lekce.length === 0 ? (
             <p className="text-muted-foreground text-sm">Lekce kurzu připravujeme.</p>
           ) : (
             <ol className="divide-border divide-y">
-              {kurz.lekce.map((lekce, poradi) => (
-                <li key={lekce.id}>
-                  <Link
-                    href={`/ucet/lekce/${lekce.id}`}
-                    className="hover:bg-muted/60 -mx-2 flex items-center gap-3 rounded-md px-2 py-2.5 text-sm"
+              {kurz.lekce.map((lekce, poradi) =>
+                lekce.zamcena ? (
+                  // Zamčená lekce (5C, 18. 10. 2026): jen název a kdy se otevře.
+                  <li
+                    key={lekce.id}
+                    className="text-muted-foreground -mx-2 flex items-center gap-3 px-2 py-2.5 text-sm"
                   >
-                    {lekce.hotovo ? (
-                      <CheckCircle2 className="text-primary size-5 shrink-0" aria-label="hotovo" />
-                    ) : (
-                      <Circle
-                        className="text-muted-foreground size-5 shrink-0"
-                        aria-label="zatím ne"
-                      />
-                    )}
-                    <span className="text-muted-foreground w-6 shrink-0 text-right font-mono">
-                      {poradi + 1}.
+                    <Lock className="size-5 shrink-0" aria-label="zamčená" />
+                    <span className="w-6 shrink-0 text-right font-mono">{poradi + 1}.</span>
+                    <span className="min-w-0 flex-1">
+                      {lekce.title}
+                      <span className="block text-xs">{lekce.zamcena}</span>
                     </span>
-                    <span className="min-w-0 flex-1">{lekce.title}</span>
-                  </Link>
-                </li>
-              ))}
+                  </li>
+                ) : (
+                  <li key={lekce.id}>
+                    <Link
+                      href={`/ucet/lekce/${lekce.id}`}
+                      className="hover:bg-muted/60 -mx-2 flex items-center gap-3 rounded-md px-2 py-2.5 text-sm"
+                    >
+                      {lekce.hotovo ? (
+                        <CheckCircle2
+                          className="text-primary size-5 shrink-0"
+                          aria-label="hotovo"
+                        />
+                      ) : (
+                        <Circle
+                          className="text-muted-foreground size-5 shrink-0"
+                          aria-label="zatím ne"
+                        />
+                      )}
+                      <span className="text-muted-foreground w-6 shrink-0 text-right font-mono">
+                        {poradi + 1}.
+                      </span>
+                      <span className="min-w-0 flex-1">{lekce.title}</span>
+                      {lekce.kviz && (
+                        <Badge variant={lekce.kviz.splneno ? "secondary" : "outline"}>
+                          {lekce.kviz.splneno ? "kvíz splněný" : "kvíz"}
+                        </Badge>
+                      )}
+                    </Link>
+                  </li>
+                ),
+              )}
             </ol>
           )}
         </CardContent>

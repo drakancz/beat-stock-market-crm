@@ -23,6 +23,7 @@ import {
 import { nactiUzivatele } from "@/lib/queries";
 import { requireAdmin } from "@/lib/session";
 import { ROLE_LABEL, ROLE_SCOPE } from "@/lib/types";
+import { jeUkazkovyTym } from "@/lib/ukazka";
 
 export const metadata: Metadata = { title: "Správa" };
 
@@ -33,8 +34,10 @@ export default async function SpravaPage() {
   // je tu podruhé schválně — obrazovka se čte samostatně a nemá záviset na
   // tom, že si někdo všimne souboru o patro výš. Dotaz proběhne jednou,
   // `getViewer()` je pro jedno vykreslení v paměti.
-  await requireAdmin();
+  const admin = await requireAdmin();
   const uzivatele = await nactiUzivatele();
+  // Ukázkový účet Správu uživatelů nemá a e-maily kolegů neuvidí.
+  const ukazka = jeUkazkovyTym(admin.email);
 
   return (
     <>
@@ -55,11 +58,13 @@ export default async function SpravaPage() {
             Tým má maximálně pět lidí, role proto zůstávají jednoduché — ale nastavitelné, ne
             napevno v kódu.
           </CardDescription>
-          <CardAction>
-            <Button asChild variant="outline" size="sm">
-              <Link href="/sprava/uzivatele">Spravovat uživatele</Link>
-            </Button>
-          </CardAction>
+          {!ukazka && (
+            <CardAction>
+              <Button asChild variant="outline" size="sm">
+                <Link href="/sprava/uzivatele">Spravovat uživatele</Link>
+              </Button>
+            </CardAction>
+          )}
         </CardHeader>
         <CardContent>
           <div className="-mx-2 overflow-x-auto px-2">
@@ -76,7 +81,9 @@ export default async function SpravaPage() {
                   <TableRow key={uzivatel.id}>
                     <TableCell className="font-medium whitespace-nowrap">
                       {uzivatel.name}
-                      <span className="text-muted-foreground block text-xs">{uzivatel.email}</span>
+                      {!ukazka && (
+                        <span className="text-muted-foreground block text-xs">{uzivatel.email}</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary">{ROLE_LABEL[uzivatel.role]}</Badge>

@@ -77,6 +77,7 @@ export function Prilohy({
   smiNahravat,
   uloziste,
   varovani,
+  ukazka = false,
 }: {
   typ: AttachmentOwner;
   id: string;
@@ -94,6 +95,8 @@ export function Prilohy({
    * varování neukazuje.
    */
   varovani: "uzivatel" | "klient";
+  /** Ukázkový režim (src/lib/ukazka.ts) — nahrávání je vypnuté schválně. */
+  ukazka?: boolean;
 }) {
   const router = useRouter();
   const vyber = useRef<HTMLInputElement>(null);
@@ -346,7 +349,9 @@ export function Prilohy({
           </div>
         ) : (
           <p className="text-muted-foreground text-sm">
-            Nahrávání souborů zatím není nastavené — chybí přístup k úložišti.
+            {ukazka
+              ? "V ukázce je nahrávání souborů vypnuté — cizí soubory sem nepatří."
+              : "Nahrávání souborů zatím není nastavené — chybí přístup k úložišti."}
           </p>
         ))}
 

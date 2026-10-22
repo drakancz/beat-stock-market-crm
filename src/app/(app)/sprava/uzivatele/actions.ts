@@ -7,7 +7,7 @@ import { zapisDoAuditu } from "@/lib/audit";
 import { odesilaniFunguje, posliObnovuHesla, posliPozvanku } from "@/lib/email";
 import { db } from "@/lib/db";
 import { osloveniUzivatele } from "@/lib/osloveni";
-import { requireAdmin } from "@/lib/session";
+import { requireSpravceUzivatelu } from "@/lib/session";
 import { vytvorOdkazNaHeslo } from "@/lib/tokeny";
 
 /**
@@ -46,7 +46,7 @@ const idUzivatele = z.string().trim().min(1).max(64);
 
 /** Založení uživatele. Heslo se nenastavuje — to si zadá sám z odkazu. */
 export async function zalozUzivatele(formData: FormData): Promise<Vysledek> {
-  const admin = await requireAdmin();
+  const admin = await requireSpravceUzivatelu();
 
   const vstup = novyUzivatel.safeParse({
     firstName: formData.get("firstName") ?? "",
@@ -131,7 +131,7 @@ export async function zalozUzivatele(formData: FormData): Promise<Vysledek> {
  * platit ten předchozí.
  */
 export async function novyOdkazNaHeslo(userIdRaw: string): Promise<Vysledek> {
-  const admin = await requireAdmin();
+  const admin = await requireSpravceUzivatelu();
 
   const vstup = idUzivatele.safeParse(userIdRaw);
   if (!vstup.success) return { ok: false, chyba: "Neplatný uživatel." };
@@ -197,7 +197,7 @@ export async function novyOdkazNaHeslo(userIdRaw: string): Promise<Vysledek> {
 
 /** Změna role. */
 export async function zmenRoli(userIdRaw: string, roleRaw: string): Promise<Vysledek> {
-  const admin = await requireAdmin();
+  const admin = await requireSpravceUzivatelu();
 
   const id = idUzivatele.safeParse(userIdRaw);
   const role = ROLE.safeParse(roleRaw);
@@ -240,7 +240,7 @@ export async function zmenRoli(userIdRaw: string, roleRaw: string): Promise<Vysl
 
 /** Odebrání nebo vrácení přístupu. Uživatel se nemaže — přišly by o něj vazby. */
 export async function prepniPristup(userIdRaw: string, aktivovatRaw: boolean): Promise<Vysledek> {
-  const admin = await requireAdmin();
+  const admin = await requireSpravceUzivatelu();
 
   // Z prohlížeče může přijít cokoli, i když typ říká `boolean`.
   const id = idUzivatele.safeParse(userIdRaw);
@@ -316,7 +316,7 @@ export async function prepniPristup(userIdRaw: string, aktivovatRaw: boolean): P
  * takže se ruší posunutím `tokensValidFrom`, ne smazáním řádku.
  */
 export async function dejUzivateleDoKose(userIdRaw: string): Promise<Vysledek> {
-  const admin = await requireAdmin();
+  const admin = await requireSpravceUzivatelu();
 
   const id = idUzivatele.safeParse(userIdRaw);
   if (!id.success) return { ok: false, chyba: "Neplatný požadavek." };

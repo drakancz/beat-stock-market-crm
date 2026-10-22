@@ -9,11 +9,13 @@ import type { Prisma } from "@/generated/prisma/client";
 import { zapisDoAuditu } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { adresaProQr, noveTajemstvi, noveZalozniKody, overKod } from "@/lib/dvoufazove";
+import { fakturacniSchema, sloupceFakturace } from "@/lib/fakturacni-udaje";
 import { noveHesloSchema, overHeslo, zahesluj } from "@/lib/hesla";
 import { odhlasKlienta, requireKlient } from "@/lib/klient/sezeni";
 import { propisUpravuKlienta } from "@/lib/smartemailing";
 import { rozsifruj, zasifruj } from "@/lib/tajemstvi";
 import { sjednotTelefon } from "@/lib/telefon";
+import { jeUkazkovyKlient, VYPNUTO_V_UKAZCE } from "@/lib/ukazka";
 
 /**
  * Můj profil v klientské části (krok 3A, část 3, Jakub 30. 9. 2026).
@@ -141,6 +143,8 @@ const noveHesloVstup = z
 /** Změna hesla odhlásí všechna zařízení včetně tohohle. */
 export async function zmenHesloKlienta(formData: FormData): Promise<VysledekProfiluKlienta> {
   const klient = await requireKlient();
+  // Heslo ukázkového účtu je veřejné — účet se nemění (src/lib/ukazka.ts).
+  if (jeUkazkovyKlient(klient.email)) return { ok: false, chyba: VYPNUTO_V_UKAZCE };
 
   const stare = hesloVstup.safeParse(formData.get("stare"));
   if (!stare.success) return { ok: false, chyba: stare.error.issues[0]!.message };
@@ -189,6 +193,8 @@ const kodVstup = z
  */
 export async function zapniDvoufazoveKlienta(formData: FormData): Promise<VysledekProfiluKlienta> {
   const klient = await requireKlient();
+  // Heslo ukázkového účtu je veřejné — účet se nemění (src/lib/ukazka.ts).
+  if (jeUkazkovyKlient(klient.email)) return { ok: false, chyba: VYPNUTO_V_UKAZCE };
 
   const heslo = hesloVstup.safeParse(formData.get("heslo"));
   if (!heslo.success) return { ok: false, chyba: heslo.error.issues[0]!.message };
@@ -229,6 +235,8 @@ export async function zapniDvoufazoveKlienta(formData: FormData): Promise<Vysled
 
 export async function potvrdDvoufazoveKlienta(formData: FormData): Promise<VysledekProfiluKlienta> {
   const klient = await requireKlient();
+  // Heslo ukázkového účtu je veřejné — účet se nemění (src/lib/ukazka.ts).
+  if (jeUkazkovyKlient(klient.email)) return { ok: false, chyba: VYPNUTO_V_UKAZCE };
 
   const kod = kodVstup.safeParse(formData.get("kod"));
   if (!kod.success) return { ok: false, chyba: kod.error.issues[0]!.message };
@@ -269,6 +277,8 @@ export async function potvrdDvoufazoveKlienta(formData: FormData): Promise<Vysle
 
 export async function vypniDvoufazoveKlienta(formData: FormData): Promise<VysledekProfiluKlienta> {
   const klient = await requireKlient();
+  // Heslo ukázkového účtu je veřejné — účet se nemění (src/lib/ukazka.ts).
+  if (jeUkazkovyKlient(klient.email)) return { ok: false, chyba: VYPNUTO_V_UKAZCE };
 
   const heslo = hesloVstup.safeParse(formData.get("heslo"));
   if (!heslo.success) return { ok: false, chyba: heslo.error.issues[0]!.message };
@@ -293,4 +303,41 @@ export async function vypniDvoufazoveKlienta(formData: FormData): Promise<Vysled
 
   revalidatePath("/ucet/profil");
   return { ok: true, zprava: "Dvoufázové ověření je vypnuté." };
+}
+
+/* ---------- Fakturační údaje ---------- */
+
+/**
+ * Fakturační údaje (19. 10. 2026) — nepovinné; bez adresy vzniká
+ * zjednodušený daňový doklad. Na už vystavené faktuře se nic nezmění.
+ * Do auditu jen, že se změnily — ne obsah (pravidlo 8).
+ */
+export async function ulozFakturacniUdaje(formData: FormData): Promise<VysledekProfiluKlienta> {
+  const klient = await requireKlient();
+  const vstup = fakturacniSchema.safeParse({
+    nazev: formData.get("nazev") ?? "",
+    ulice: formData.get("ulice") ?? "",
+    mesto: formData.get("mesto") ?? "",
+    psc: formData.get("psc") ?? "",
+    zeme: formData.get("zeme") ?? "",
+    ico: formData.get("ico") ?? "",
+    dic: formData.get("dic") ?? "",
+  });
+  if (!vstup.success) return { ok: false, chyba: vstup.error.issues[0]!.message };
+
+  await db.$transaction(async (tx) => {
+    await tx.client.update({
+      where: { id: klient.clientId },
+      data: sloupceFakturace(vstup.data),
+    });
+    await zapisDoAuditu(tx, {
+      userId: null,
+      entity: "clients",
+      entityId: klient.clientId,
+      action: "klient.ucet-udaje",
+      after: { fakturacniUdaje: "změněny" },
+    });
+  });
+  revalidatePath("/ucet/profil");
+  return { ok: true, zprava: "Fakturační údaje jsou uložené." };
 }

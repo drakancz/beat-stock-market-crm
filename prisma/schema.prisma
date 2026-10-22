@@ -45,27 +45,10 @@ enum BrokerAutoConnect {
   ZATIM_NE
 }
 
-/// Jak se do portfolia dostávají data.
-enum PortfolioSource {
-  KLIC
-  RUCNE
-}
-
 enum ProductKind {
   KURZ
   CLENSTVI
   KONZULTACE
-}
-
-enum CallOutcome {
-  DOVOLANO
-  NEDOVOLANO
-  SCHUZKA
-  ODMITNUTO
-  /// Hovor, který systém zapsal sám při přesunu případu do fáze Kontakt.
-  /// Ve formuláři pro ruční zápis se nenabízí — kdyby si ho někdo vybral,
-  /// přestalo by být poznat, co vzniklo automaticky (Jakub, 9. 9. 2026).
-  AUTOMATICKY
 }
 
 /// U čeho příloha visí. Přibývá sem druh záznamu vždycky, když se
@@ -114,7 +97,7 @@ model User {
 
   /// Kdy byl účet odložen do koše. Dokud je vyplněné, uživatel se
   /// nepřihlásí, nikde se nenabízí a v seznamu týmu není — ale řádek
-  /// zůstává, takže jeho klienti, hovory i auditní stopa drží. Dá se
+  /// zůstává, takže jeho úkoly, poznámky i auditní stopa drží. Dá se
   /// vrátit. Kdo ho odložil, je v auditním logu.
   deletedAt DateTime?
 
@@ -139,9 +122,7 @@ model User {
   updatedAt DateTime @updatedAt
 
   /// Klienti se lidem nepřiřazují (od 22. 9. 2026), takže tu vazba
-  /// na klienty není. Hovory a úkoly zůstávají — to je autorství, ne
-  /// vlastnictví.
-  calls           Call[]
+  /// na klienty není. Úkoly zůstávají — to je autorství, ne vlastnictví.
   tasks           Task[]
   auditLog        AuditLogEntry[]
   /// Poznámky u klientů, které napsal (Jakub, 23. 9. 2026).
@@ -163,7 +144,9 @@ model User {
 
   /// Nastavení → Prodloužení: tenhle člověk dostává úkoly na prodloužení
   /// členství (Jakub, 24. 9. 2026).
-  resiProdlouzeni CompanySettings[] @relation("ResiProdlouzeni")
+  /// Štítky a uložené filtry (Fáze 5B, 11. 10. 2026).
+  pridaneStitky ClientTagLink[]
+  ulozeneFiltry SavedFilter[]
 
   /// Klíče pro přístup přes MCP (Jakub, 27. 9. 2026) — jen administrátor.
   mcpKlice McpKey[] @relation("McpKlice")
@@ -175,10 +158,20 @@ model User {
   pozvaniKlienti ClientAccount[] @relation("KlientaPozval")
 
   /// Zprávy, které tenhle administrátor poslal klientům (3A, 4. 10. 2026).
-  zpravyKlientum ClientMessage[] @relation("ZpravaOd")
+  zpravyKlientum   ClientMessage[]       @relation("ZpravaOd")
+  upravenaPole     ClientFieldValue[]    @relation("PoleUpravil")
+  odpovediNaDotazy LessonQuestion[]      @relation("DotazOdpovedel")
+  /// Konzultace (5B, 19. 10. 2026): které vede a rezervace, které zrušil.
+  vedeKonzultace   ConsultationSlot[]    @relation("KonzultaceVede")
+  zruseneRezervace ConsultationBooking[] @relation("RezervaceZrusil")
+  vracenePlatby    Payment[]             @relation("PlatbuVratil")
+  vystaveneFaktury Invoice[]             @relation("FakturuVystavil")
 
   /// Účasti na webinářích, které tenhle administrátor zapsal (3C).
   zapsaneUcasti WebinarAttendance[] @relation("UcastZapsal")
+
+  /// Odměny doporučitelům, které tenhle administrátor odškrtl jako vyplacené (5A).
+  vyplaceneOdmeny ReferralReward[] @relation("OdmenuVyplatil")
 
   @@map("users")
 }
@@ -247,13 +240,8 @@ model Broker {
   logo String?
 
   /// Kdy byl broker odložen do koše. Dokud je vyplněné, nikde se nenabízí,
-  /// ale řádek zůstává — portfolia klientů se na něj pořád odkazují a dá
-  /// se vrátit zpátky. Kdo ho odložil, je v auditním logu.
+  /// ale řádek zůstává a dá se vrátit zpátky. Kdo ho odložil, je v auditním logu.
   deletedAt DateTime?
-
-  /// Objednávky tu schválně nejsou (Jakub, 22. 9. 2026): u objednávky
-  /// produktu se broker nevede, portfolia klientů u něj zůstávají.
-  portfolios Portfolio[]
 
   @@map("brokers")
 }
@@ -287,8 +275,8 @@ model Client {
   programAccess ProgramAccess @default(NEPOVOLEN)
 
   /// Brokeři, které klient uvedl při objednávce nebo na webu (Jakub,
-  /// 25. 9. 2026). **Jen informace** — portfolio se z nich nezakládá,
-  /// to přiřazuje člověk v okně Upravit. Platí poslední uvedení.
+  /// 25. 9. 2026). **Jen informace**, nic se z nich nezakládá. Platí
+  /// poslední uvedení.
   /// Prázdný seznam s vyplněným `brokersReportedAt` = „Nemám brokera".
   reportedBrokers   String[]  @default([])
   /// Kdy klient brokery naposledy uvedl. Prázdné = nikdy neuvedl.
@@ -298,10 +286,10 @@ model Client {
   /// se nikomu nepřiřazují — objednávky chodí z Landing Page, takže
   /// rozdělovat klienty mezi lidi nemá co řídit. Vidí je každý přihlášený.
 
-  /// Souhlasy se evidují včetně data. Bez nich se nesmí odeslat
-  /// marketingové sdělení ani uložit nahrávka hovoru.
+  /// Souhlas s marketingem se eviduje včetně data. Bez něj se nesmí
+  /// odeslat marketingové sdělení. Souhlas s nahráváním hovorů tu byl do
+  /// 20. 10. 2026 — hovory z CRM zmizely (Jakub).
   consentMarketingAt DateTime?
-  consentRecordingAt DateTime?
 
   /// Kdy klient odešel do SmartEmailingu, nebo proč neodešel (Jakub,
   /// 13. 9. 2026). Posílá se jen nový klient z formuláře se souhlasem
@@ -356,8 +344,6 @@ model Client {
   nejsouDuplicitaA ClientNotDuplicate[] @relation("NeniDuplicitaA")
   nejsouDuplicitaB ClientNotDuplicate[] @relation("NeniDuplicitaB")
 
-  portfolios Portfolio[]
-  calls      Call[]
   tasks      Task[]
   activities Activity[]
   orders     Order[]
@@ -382,9 +368,38 @@ model Client {
   /// Vzdělávání (krok 3C, 4. 10. 2026): hotové lekce, účast na webinářích,
   /// odznaky a týdny, kdy byl klient v klientské části.
   hotoveLekce       LessonProgress[]
+  hodnoceniLekci    LessonRating[]
   ucastNaWebinarich WebinarAttendance[]
   odznaky           ClientBadge[]
   aktivniTydny      ClientActiveWeek[]
+  /// Kvízy a certifikáty (Fáze 5C, 11. 10. 2026).
+  pokusyKvizu       QuizAttempt[]
+  certifikaty       CourseCertificate[]
+  /// Štítky (Fáze 5B, 11. 10. 2026) — klient je nikdy nevidí.
+  stitky            ClientTagLink[]
+  pravidla          AutomationRun[]
+  vlastniPole       ClientFieldValue[]
+  dotazyKLekcim     LessonQuestion[]
+  /// Fakturační údaje (19. 10. 2026) — nepovinné, z webu nebo z Mého
+  /// profilu klienta. Bez adresy vzniká zjednodušený daňový doklad.
+  billingName       String?             @db.VarChar(200)
+  billingStreet     String?             @db.VarChar(200)
+  billingCity       String?             @db.VarChar(100)
+  billingZip        String?             @db.VarChar(20)
+  billingCountry    String?             @db.Char(2)
+  billingIco        String?             @db.VarChar(20)
+  billingDic        String?             @db.VarChar(20)
+
+  rezervace       ConsultationBooking[]
+  vlastniPravidla CustomRuleRun[]
+
+  /// Kdo klienta přivedl (Fáze 5A, 15. 10. 2026) — zapíše se jednou, při
+  /// první objednávce s kódem doporučitele, a nikdy se nepřepíše. Vidí
+  /// každý, kdo vidí kartu; odměnu jen administrátor.
+  referredById String?
+  referredBy   Referrer? @relation("PrivedenyKlient", fields: [referredById], references: [id], onDelete: SetNull)
+  /// Když klient sám doporučuje (stávající klient jako doporučitel).
+  doporucitel  Referrer? @relation("DoporucitelKlient")
 
   @@index([stage])
   @@index([sourceId])
@@ -459,11 +474,13 @@ model CompanySettings {
   id String @id @default("firma")
 
   /// Údaje firmy — patička e-mailů, později nabídky.
-  companyName String  @default("Beat Stock Market")
-  ico         String?
-  dic         String?
-  address     String?
-  vatPayer    Boolean @default(true)
+  companyName  String  @default("Beat Stock Market")
+  ico          String?
+  dic          String?
+  address      String?
+  /// Bankovní účet na fakturu (19. 10. 2026) — nepovinný, platí se branou.
+  bankAccount  String?
+  vatPayer     Boolean @default(true)
   /// Kam klienti píšou kvůli svým údajům a objednávkám (Jakub, 30. 9. 2026).
   /// Ukazuje se v zásadách ochrany osobních údajů a podmínkách klientské
   /// části — veřejně, i nepřihlášenému.
@@ -485,6 +502,12 @@ model CompanySettings {
 
   /// Pracovní dny v týdnu: 1 = pondělí … 7 = neděle.
   workDays Int[] @default([1, 2, 3, 4, 5])
+
+  /// Google Kalendář pro konzultace (Jakub, 20. 10. 2026) — ID firemního
+  /// kalendáře (u Gmailu jeho adresa) a vypínač. Klíč servisního účtu je
+  /// jen v prostředí (`GOOGLE_KALENDAR_*`), sem nepatří.
+  googleCalendarId     String? @db.VarChar(200)
+  googleCalendarActive Boolean @default(false)
 
   /// Komu se přiřadí klient z webu a jaký dostane zdroj, se tu vybíralo
   /// do 22. 9. 2026 (`leadOwnerId`, `leadSourceId`). Klienti se nikomu
@@ -509,13 +532,20 @@ model CompanySettings {
   errorNotificationsEnabled Boolean   @default(true)
   errorNotificationSentAt   DateTime?
 
-  /// Prodloužení členství (Jakub, 24. 9. 2026): komu CRM zakládá úkol
-  /// „zavolat kvůli prodloužení" a kolik dní před koncem. Prázdné = nikdo
-  /// vybraný není a úkoly nevznikají. Klienti se nikomu nepřiřazují, proto
-  /// jeden člověk za firmu.
-  renewalUserId   String?
-  renewalUser     User?   @relation("ResiProdlouzeni", fields: [renewalUserId], references: [id], onDelete: SetNull)
-  renewalLeadDays Int     @default(14)
+  /// Připomínka nezaplacené objednávky (Fáze 5A, Jakub 11. 10. 2026):
+  /// klient dostane upozornění po `paymentReminderFirstDays` a
+  /// `paymentReminderSecondDays` dnech od objednávky. Úkol zavolat s druhou
+  /// připomínkou zanikl 20. 10. 2026 (Jakub). Mění jen administrátor v Nastavení → Prodloužení. Logika v
+  /// `src/lib/klient/pripominka-platby.ts`.
+  paymentRemindersEnabled   Boolean @default(true)
+  paymentReminderFirstDays  Int     @default(3)
+  paymentReminderSecondDays Int     @default(7)
+
+  /// „Platí, ale nechodí“ (Fáze 5B, Jakub 15. 10. 2026): po kolika dnech
+  /// bez návštěvy klientské části dostane člen s běžícím členstvím značku.
+  /// Mění jen administrátor v Nastavení → Prodloužení. Pravidlo je
+  /// v `src/lib/nechodi.ts`.
+  inactiveMemberDays Int @default(21)
 
   updatedAt DateTime @updatedAt
 
@@ -565,58 +595,6 @@ model CompanyDayOff {
 
   @@index([date])
   @@map("company_days_off")
-}
-
-/// Portfolio nepatří klientovi, ale dvojici klient + broker.
-/// Jeden člověk může mít účet u dvou brokerů a u každého jiné pozice.
-model Portfolio {
-  id String @id @default(cuid())
-
-  clientId String
-  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
-
-  brokerId String
-  broker   Broker @relation(fields: [brokerId], references: [id])
-
-  source   PortfolioSource
-  currency String          @db.Char(3)
-
-  /// Kolik klient vložil a kolik má dnes.
-  invested Decimal @db.Decimal(18, 2)
-  value    Decimal @db.Decimal(18, 2)
-
-  lastSyncAt DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-
-  /// Kdy bylo portfolio odloženo do koše.
-  deletedAt DateTime?
-
-  positions Position[]
-
-  @@unique([clientId, brokerId])
-  @@index([clientId])
-  @@map("portfolios")
-}
-
-model Position {
-  id String @id @default(cuid())
-
-  portfolioId String
-  portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
-
-  ticker String
-  name   String
-
-  quantity     Decimal @db.Decimal(18, 6)
-  averagePrice Decimal @db.Decimal(18, 4)
-  currentPrice Decimal @db.Decimal(18, 4)
-
-  updatedAt DateTime @updatedAt
-
-  @@unique([portfolioId, ticker])
-  @@index([portfolioId])
-  @@map("positions")
 }
 
 /// Sazba DPH.
@@ -685,55 +663,18 @@ model Product {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  calls     Call[]
   orders    OrderItem[]
   platnosti ProductValidity[]
 
   /// Obsah kurzu v klientské části (krok 3C, 4. 10. 2026) — jen u druhu Kurz.
-  kurzy Course[]
+  kurzy             Course[]
+  pravidla          AutomationRule[]
+  stitkyPoZaplaceni AutomationTagPair[]
+
+  /// Slevové kódy omezené na tenhle produkt (Fáze 5A, 14. 10. 2026).
+  slevoveKody DiscountCodeProduct[]
 
   @@map("products")
-}
-
-model Call {
-  id String @id @default(cuid())
-
-  clientId String
-  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id])
-
-  at          DateTime
-  durationMin Int
-  outcome     CallOutcome
-  note        String      @db.Text
-
-  /// Zájem o konkrétní produkt, ne obecná poznámka.
-  interestProductId String?
-  interestProduct   Product? @relation(fields: [interestProductId], references: [id])
-
-  /// Které objednávky se hovor týkal. Nepovinné — ruční zápis z karty
-  /// klienta žádnou objednávku mít nemusí.
-  ///
-  /// Objednávka odložená do koše vazbu drží, aby z hovoru nezmizelo,
-  /// čeho se týkal; v přehledu se taková objednávka nezobrazuje.
-  orderId String?
-  order   Order?  @relation(fields: [orderId], references: [id])
-
-  createdAt DateTime @default(now())
-
-  /// Kdy byl hovor odložen do koše. Dokud je vyplněné, nikde se
-  /// nezobrazuje — ani na časové ose klienta, ani v číslech na
-  /// Dashboardu — ale řádek zůstává a jde ho vrátit.
-  ///
-  /// **Každý dotaz na hovory proto potřebuje `deletedAt: null`.**
-  deletedAt DateTime?
-
-  @@index([clientId, at])
-  @@index([userId])
-  @@index([orderId])
-  @@map("calls")
 }
 
 /// Poznámka týmu u klienta — okno Poznámky na kartě klienta (Jakub,
@@ -742,7 +683,7 @@ model Call {
 /// nepřepisují text navzájem.
 ///
 /// - **Píše každý přihlášený**, kdo klienta vidí.
-/// - **Opravit a smazat smí autor a administrátor** — jako u hovorů.
+/// - **Opravit a smazat smí autor a administrátor**.
 /// - **Autor je prázdný u zápisů, které udělal systém**: lead z webu,
 ///   objednávka z Landing Page, převod staré poznámky.
 /// - **Klient poznámky nikdy nevidí** a do auditu se z nich **nepíše
@@ -766,7 +707,7 @@ model ClientNote {
   updatedAt DateTime @updatedAt
 
   /// Smazaný zápis. Řádek zůstává kvůli auditní stopě, do obrazovky
-  /// Smazané nechodí (jako hovory a úkoly). **Každý dotaz potřebuje
+  /// Smazané nechodí (jako úkoly). **Každý dotaz potřebuje
   /// `deletedAt: null`.**
   deletedAt DateTime?
 
@@ -796,17 +737,18 @@ model Task {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  /// Úkol na prodloužení členství, který založilo CRM samo (Jakub,
-  /// 24. 9. 2026). Prázdné u úkolů, které si lidé zakládají ručně.
-  prodlouzeni ProductValidity? @relation("UkolNaProdlouzeni")
+  /// Úkoly na prodloužení a na platbu, které CRM zakládalo samo, zanikly
+  /// 20. 10. 2026 (Jakub) — nevolá se.
+  /// Úkol pro toho, kdo vede rezervovanou konzultaci (5B, 19. 10. 2026).
+  konzultace ConsultationBooking? @relation("UkolNaKonzultaci")
 
-  /// Kdy byl úkol smazán. Stejně jako u hovorů se řádek nemaže — zmizí
+  /// Kdy byl úkol smazán. Řádek se nemaže — zmizí
   /// ze všech seznamů, ale zůstane kvůli auditní stopě.
   ///
   /// **Každý dotaz na úkoly proto potřebuje `deletedAt: null`.**
   ///
-  /// Do obrazovky Smazané úkoly nechodí, stejně jako tam nechodí hovory:
-  /// vrací se tam jen klienti, portfolia, brokeři a uživatelé.
+  /// Do obrazovky Smazané úkoly nechodí:
+  /// vrací se tam jen klienti, objednávky, produkty, brokeři a uživatelé.
   deletedAt DateTime?
 
   @@index([userId, dueAt])
@@ -913,13 +855,16 @@ enum UserEventKind {
   /// Dotaz přes MCP — AI četla data jménem uživatele (Jakub, 27. 9. 2026).
   /// V `detail` je název nástroje, nikdy obsah dotazu.
   MCP
+  /// Otázka na asistenta AI v CRM (krok 4, Jakub 10. 10. 2026). V `detail`
+  /// jsou názvy použitých nástrojů, nikdy obsah otázky. Podle počtu za
+  /// pražský den se hlídá denní limit.
+  ASISTENT
 }
 
 /// Aktivita uživatelů — kdy se kdo přihlásil a které obrazovky otevřel.
 ///
 /// Doplňuje auditní log: ten říká, **co kdo změnil**, tohle **co kdo
-/// dělal a viděl**. Obrazovka Nastavení → Aktivita skládá obojí dohromady
-/// a přidává hovory. Záznam je **po obrazovkách, ne po kliknutích**
+/// dělal a viděl**. Obrazovka Nastavení → Aktivita skládá obojí dohromady. Záznam je **po obrazovkách, ne po kliknutích**
 /// (Jakub, 10. 9. 2026) — kvůli ochraně zaměstnanců i kvůli tomu, aby se
 /// v záznamu dalo něco najít.
 ///
@@ -972,6 +917,13 @@ enum OrderStatus {
   ZAPLACENO
 }
 
+/// Odkud objednávka přišla (Jakub, 20. 10. 2026): z Landing Page, nebo ji
+/// klient založil sám v klientské části (Koupit).
+enum OrderChannel {
+  LANDING_PAGE
+  KLIENTSKA_CAST
+}
+
 /// Jestli klient dostal přístup do zakoupeného programu.
 ///
 /// Zatím je to **jen evidence** — žádný systém se podle toho neotevírá.
@@ -995,7 +947,6 @@ enum ProgramAccess {
 ///
 /// **Broker se tu nevede** (Jakub, 22. 9. 2026). U případu býval nepovinný
 /// a odvozoval se přes klienta; k objednávce produktu nemá vztah.
-/// Portfolia klientů u brokerů zůstávají beze změny.
 ///
 /// Kdo objednávku vidí, se odvozuje od klienta (`viditelneObjednavky()`
 /// v `src/lib/queries.ts`) — obchodník tedy vidí objednávky svých klientů,
@@ -1012,6 +963,17 @@ model Order {
   /// smazání se znovu nepoužije. V CRM objednávku označuje všude místo
   /// názvu.
   number String @unique @default("")
+
+  /// Odkud objednávka přišla — v CRM značka „z klientské části“.
+  channel OrderChannel @default(LANDING_PAGE)
+
+  /// Souhlas s obchodními podmínkami při nákupu v klientské části
+  /// (Jakub, 20. 10. 2026): kdy a se kterým zněním (`OBCHODNI_PODMINKY_OD`).
+  /// Součástí souhlasu je žádost o zpřístupnění hned po zaplacení a vědomí,
+  /// že tím zaniká právo odstoupit. U objednávek z Landing Page prázdné —
+  /// souhlas tam sbírá web.
+  termsAcceptedAt DateTime?
+  termsVersion    String?   @db.VarChar(20)
 
   /// Název objednávky. Landing Page ho může poslat; když nepošle,
   /// poskládá se z objednaných produktů. Od 24. 9. 2026 se v CRM
@@ -1037,6 +999,29 @@ model Order {
   /// podle něj.
   paidAt DateTime?
 
+  /// Připomínky platby (Fáze 5A, 11. 10. 2026): kolik jich klientovi
+  /// odešlo (0–2), kdy naposledy a jak dorazila (`OZNAMENI`, `EMAIL`,
+  /// `JEN_UCET`, `BEZ_UCTU` — jako u upozornění klientům). Plánovač podle
+  /// počtu pozná, co už odešlo; zápis je podmíněný, nic se neopakuje.
+  paymentReminders        Int       @default(0)
+  paymentRemindedAt       DateTime?
+  paymentReminderDelivery String?   @db.VarChar(20)
+
+  /// Slevový kód, se kterým klient objednával (Fáze 5A, 14. 10. 2026).
+  /// Slevu si spočítalo CRM samo (`src/lib/slevove-kody.ts`) a je už
+  /// v cenách položek — tady je jen to, odkud se vzala. Kód se nedá
+  /// nadobro smazat, dokud na něm visí objednávka (`Restrict`).
+  discountCodeId String?
+  discountCode   DiscountCode? @relation(fields: [discountCodeId], references: [id], onDelete: Restrict)
+
+  /// Doporučitel, kvůli kterému tahle objednávka přinesla odměnu (Fáze 5A,
+  /// 15. 10. 2026). Vyplní se **jen u první objednávky nového klienta**
+  /// s kódem doporučitele — další objednávky ho nemají, i když jsou se
+  /// stejným kódem. Odměnu z ní drží `odmena` (`src/lib/doporuceni.ts`).
+  referrerId String?
+  referrer   Referrer?       @relation(fields: [referrerId], references: [id], onDelete: SetNull)
+  odmena     ReferralReward?
+
   /// Kdy byla objednávka odložena do koše. Dokud je vyplněné, nikde se
   /// nezobrazuje, ale řádek i jeho položky zůstávají a jde ji vrátit.
   deletedAt DateTime?
@@ -1048,11 +1033,15 @@ model Order {
 
   items OrderItem[]
 
-  /// Hovory, které se objednávky týkaly.
-  calls Call[]
+  /// Pokusy o platbu přes bránu (19. 10. 2026).
+  platby  Payment[]
+  /// Faktura a případný dobropis (19. 10. 2026).
+  faktury Invoice[]
 
   @@index([clientId])
   @@index([status])
+  @@index([discountCodeId])
+  @@index([referrerId])
   @@map("orders")
 }
 
@@ -1087,16 +1076,9 @@ model ProductValidity {
   manualUntil DateTime?
   manualAt    DateTime?
 
-  /// Úkol na prodloužení, který k tomuhle konci CRM založilo, a ke kterému
-  /// konci patří. Podle `reminderForUntil` se pozná, že pro současný konec
-  /// už úkol vznikl a nemá vzniknout podruhé.
-  reminderTaskId   String?   @unique
-  reminderTask     Task?     @relation("UkolNaProdlouzeni", fields: [reminderTaskId], references: [id], onDelete: SetNull)
-  reminderForUntil DateTime?
-
   /// Upozornění klientovi na konec členství (3A, 4. 10. 2026): ke kterému
-  /// konci už odešlo oznámení týden předem a v den konce. Stejný princip
-  /// jako `reminderForUntil` — ke každému konci jen jednou.
+  /// konci už odešlo oznámení týden předem a v den konce — ke každému
+  /// konci jen jednou.
   notifiedWeekForUntil DateTime?
   notifiedDayForUntil  DateTime?
 
@@ -1151,6 +1133,12 @@ model OrderItem {
   /// v den migrace. Prázdné jen teoreticky; kód pak sáhne do ceníku.
   netPrice   Decimal? @db.Decimal(18, 2)
   vatPercent Decimal? @db.Decimal(5, 2)
+
+  /// Ceníková cena za kus bez DPH **před slevou** (Fáze 5A, 14. 10. 2026).
+  /// Vyplněná jen u položky, na kterou se vztahoval slevový kód — `netPrice`
+  /// je pak už po slevě, takže tržby a statistiky počítají to, co klient
+  /// opravdu platí. Prázdné = položka bez slevy.
+  listNetPrice Decimal? @db.Decimal(18, 2)
 
   createdAt DateTime @default(now())
 
@@ -1300,6 +1288,11 @@ model ClientAccount {
 
   lastLoginAt DateTime?
 
+  /// Kdy klient naposledy otevřel klientskou část (Fáze 5B, 15. 10. 2026).
+  /// Zapisuje rám klientské části nejvýš jednou za 10 minut — žádná
+  /// historie návštěv, jen poslední čas. Podle něj „platí, ale nechodí“.
+  lastSeenAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1405,7 +1398,9 @@ model ClientMessage {
   @@map("client_messages")
 }
 
-/* ---------- Vzdělávání (krok 3C, Jakub 4. 10. 2026) ---------- */
+/**
+ * ---------- Vzdělávání (krok 3C, Jakub 4. 10. 2026) ----------
+ */
 
 /// Komu se webinář ukáže v klientské části.
 enum WebinarAudience {
@@ -1450,8 +1445,9 @@ model Course {
   /// **Každý dotaz potřebuje `deletedAt: null`.**
   deletedAt DateTime?
 
-  lekce    CourseLesson[]
-  webinare Webinar[]
+  lekce       CourseLesson[]
+  webinare    Webinar[]
+  certifikaty CourseCertificate[]
 
   @@index([productId])
   @@map("courses")
@@ -1471,14 +1467,107 @@ model CourseLesson {
   /// Pořadí v kurzu, od 1. Mezery po smazaných lekcích nevadí.
   position Int
 
+  /// Postupné odemykání (Fáze 5C, Jakub 18. 10. 2026) — co je vyplněné,
+  /// musí platit všechno; nic = lekce je otevřená hned. Pravidlo je jen
+  /// v `src/lib/vzdelavani/odemykani.ts`.
+  /// Otevře se N dní po prvním zaplacení kurzu (pražské dny).
+  unlockAfterDays     Int?      @db.SmallInt
+  /// Otevře se od začátku tohoto pražského dne.
+  unlockOn            DateTime?
+  /// Otevře se, až má klient předchozí lekci označenou jako hotovou.
+  unlockAfterPrevious Boolean   @default(false)
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  hotovo LessonProgress[]
+  hotovo    LessonProgress[]
+  hodnoceni LessonRating[]
+  dotazy    LessonQuestion[]
+  kviz      LessonQuiz?
 
   @@index([courseId, position])
   @@map("course_lessons")
+}
+
+/// Kvíz na konci lekce (Fáze 5C, Jakub 11. 10. 2026). Nejvýš jeden na
+/// lekci; zakládá a mění jen administrátor. Otázky jsou v `questions`
+/// jako `[{ otazka, moznosti: string[], spravna: index }]` — tvar hlídá
+/// `kvizSchema` v `src/lib/vzdelavani/kvizy.ts`. **Správné odpovědi se
+/// klientovi nikdy neposílají**, hodnotí server.
+///
+/// Smazaný kvíz má `deletedAt`; nové založení u téže lekce řádek vrátí
+/// s novými otázkami. Kdo kvíz jednou splnil, tomu splnění zůstává
+/// i po úpravě otázek.
+model LessonQuiz {
+  id String @id @default(cuid())
+
+  lessonId String       @unique
+  lesson   CourseLesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  questions Json
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  pokusy QuizAttempt[]
+
+  @@map("lesson_quizzes")
+}
+
+/// Jeden pokus klienta o kvíz. Splněno = aspoň 80 % správně
+/// (`PRAH_KVIZU`). Pokusů je neomezeně; jednotlivé odpovědi se neukládají.
+model QuizAttempt {
+  id String @id @default(cuid())
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  quizId String
+  quiz   LessonQuiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  correct Int
+  total   Int
+  passed  Boolean
+
+  createdAt DateTime @default(now())
+
+  @@index([clientId, quizId])
+  @@map("quiz_attempts")
+}
+
+/// Certifikát o absolvování kurzu (Fáze 5C, Jakub 11. 10. 2026): všechny
+/// lekce hotové a všechny kvízy splněné. Jméno klienta a název kurzu se
+/// zapíšou v den vydání, pozdější změna je nepřepíše. Číslo
+/// `CERT-RRRR-NNNN` přiděluje databáze spouštěčem `course_certificates_cislo`
+/// z počítadla `certificate_counters` — **v kódu ho nevymýšlej**.
+/// Certifikát se neodebírá (jako odznaky).
+model CourseCertificate {
+  id     String @id @default(cuid())
+  number String @unique @default("")
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  clientName  String @db.VarChar(200)
+  courseTitle String @db.VarChar(200)
+
+  issuedAt DateTime @default(now())
+
+  @@unique([clientId, courseId])
+  @@map("course_certificates")
+}
+
+/// Počítadlo čísel certifikátů po letech — jen pro spouštěč, kód sem nesahá.
+model CertificateCounter {
+  year Int @id
+  last Int
+
+  @@map("certificate_counters")
 }
 
 /// Klient si lekci označil jako hotovou.
@@ -1495,6 +1584,28 @@ model LessonProgress {
 
   @@unique([clientId, lessonId])
   @@map("lesson_progress")
+}
+
+/// Hodnocení lekce klientem „Pomohla vám lekce?“ 1–5 (Fáze 5C, Jakub
+/// 18. 10. 2026). Jedno na klienta a lekci, klient ho smí změnit. Jen
+/// hvězdičky, žádný text. Rozsah 1–5 hlídá i databáze (CHECK v migraci).
+model LessonRating {
+  id String @id @default(cuid())
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  lessonId String
+  lesson   CourseLesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  stars Int @db.SmallInt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([clientId, lessonId])
+  @@index([lessonId])
+  @@map("lesson_ratings")
 }
 
 /// Článek nebo video členské sekce — vidí ho kdokoli s platným členstvím.
@@ -1530,6 +1641,17 @@ model Webinar {
   audience WebinarAudience
   courseId String?
   course   Course?         @relation(fields: [courseId], references: [id])
+
+  /// Připomínka klientům (Fáze 5C, Jakub 11. 10. 2026): den předem a
+  /// hodinu předem všem s účtem, komu se webinář ukazuje. Vypíná ji
+  /// administrátor u webináře. `reminded…At` = kdy odešla, `…Count` =
+  /// kolika klientům; změna začátku obojí vynuluje. Logika v
+  /// `src/lib/vzdelavani/pripominka-webinare.ts`.
+  remindersEnabled  Boolean   @default(true)
+  remindedDayAt     DateTime?
+  remindedDayCount  Int?
+  remindedHourAt    DateTime?
+  remindedHourCount Int?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1586,4 +1708,622 @@ model ClientActiveWeek {
 
   @@id([clientId, week])
   @@map("client_active_weeks")
+}
+
+/// Barva štítku — jen odstíny, které už značka má (`globals.css`).
+enum TagColor {
+  ZAKLADNI
+  ZNACKA
+  ZELENA
+  JANTAR
+  CERVENA
+}
+
+/// Štítek u klienta (Fáze 5B, Jakub 11. 10. 2026): „VIP“, „zájem o kurz
+/// Opce“. **Seznam spravuje jen administrátor** (Nastavení → Štítky),
+/// klientům je přidává každý přihlášený. Klient štítky nevidí; přes MCP je
+/// AI vidí, Asistent AI ne. Název se hlídá bez ohledu na velikost písmen,
+/// i proti smazaným. Smazaný (`deletedAt`) zmizí u všech klientů — **každý
+/// dotaz potřebuje `deletedAt: null`**. Do Smazaných nechodí.
+model ClientTag {
+  id    String   @id @default(cuid())
+  name  String   @db.VarChar(40)
+  color TagColor @default(ZAKLADNI)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  klienti     ClientTagLink[]
+  pravidla    AutomationRule[]
+  poZaplaceni AutomationTagPair[]
+
+  @@map("client_tags")
+}
+
+/// Štítek u konkrétního klienta — kdo a kdy ho přidal.
+model ClientTagLink {
+  clientId String
+  client   Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tagId    String
+  tag      ClientTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  addedById String?
+  addedBy   User?    @relation(fields: [addedById], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@id([clientId, tagId])
+  @@index([tagId])
+  @@map("client_tag_links")
+}
+
+/// Uložený filtr seznamu klientů (Fáze 5B, Jakub 11. 10. 2026). Patří
+/// autorovi; administrátor ho může sdílet (`shared`) s celým týmem.
+/// `query` je část adresy za otazníkem jen s povolenými parametry
+/// (`ulozitelnyDotaz()` v `src/lib/filtry.ts`) — při použití se čte
+/// stejně přísně jako každý jiný odkaz.
+model SavedFilter {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name   String  @db.VarChar(60)
+  query  String  @db.VarChar(500)
+  shared Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("saved_filters")
+}
+
+/// Druh slevy u slevového kódu (Fáze 5A, Jakub 14. 10. 2026).
+enum DiscountKind {
+  /// Procenta z ceny, např. −20 %.
+  PROCENTA
+  /// Pevná částka **s DPH**, jak ji vidí zákazník (−500 Kč). U víc
+  /// produktů se rozpočítá podle jejich ceny.
+  CASTKA
+}
+
+/// Slevový kód pro objednávky z Landing Page (Fáze 5A, Jakub 14. 10. 2026).
+///
+/// - **Vidí každý přihlášený, zakládá a mění jen administrátor** — jako
+///   ceník, jsou to peníze. Obrazovka Produkty → Slevové kódy.
+/// - **Slevu počítá CRM**, Landing Page posílá jen kód
+///   (`src/lib/slevove-kody.ts`). Neplatný kód objednávku odmítne.
+/// - Všechna omezení jsou nepovinná: platnost od–do (pražské dny včetně),
+///   nejvýš počet použití, jen vybrané produkty, jednou na klienta.
+/// - Smazání jde do koše Smazané; nadobro jen kód bez objednávek.
+model DiscountCode {
+  id String @id @default(cuid())
+
+  /// Kód velkými písmeny (`LETO20`). Zákazník ho může napsat jakkoli,
+  /// porovnává se po převodu na velká. Jedinečný i proti smazaným — kód
+  /// z koše jde vždycky obnovit.
+  code String @unique @db.VarChar(40)
+
+  kind  DiscountKind
+  /// Procenta (1–100), nebo koruny s DPH — podle `kind`.
+  value Decimal      @db.Decimal(18, 2)
+
+  /// Poznámka pro tým, k čemu kód je („Black Friday 2026“). Klient ji nevidí.
+  note String? @db.VarChar(200)
+
+  /// Začátek prvního a posledního dne platnosti v Praze. Prázdné = bez omezení.
+  validFrom DateTime?
+  validTo   DateTime?
+
+  /// Nejvýš kolik objednávek kód smí mít (smazané se nepočítají). Prázdné = neomezeně.
+  maxUses Int?
+
+  /// Jeden klient kód použije jen jednou.
+  oncePerClient Boolean @default(false)
+
+  /// Komu kód patří (Fáze 5A, 15. 10. 2026). Nový klient, který s ním
+  /// poprvé objedná, je „přivedený“ a doporučitel dostane odměnu.
+  /// Prázdné = běžná sleva bez doporučitele.
+  referrerId String?
+  referrer   Referrer? @relation(fields: [referrerId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  /// Produkty, na které kód platí. Prázdné = na všechny.
+  produkty   DiscountCodeProduct[]
+  objednavky Order[]
+
+  @@index([referrerId])
+  @@map("discount_codes")
+}
+
+/// Produkt, na který slevový kód platí.
+model DiscountCodeProduct {
+  codeId    String
+  code      DiscountCode @relation(fields: [codeId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([codeId, productId])
+  @@index([productId])
+  @@map("discount_code_products")
+}
+
+enum ReferrerKind {
+  /// Stávající klient, který doporučuje dál.
+  KLIENT
+  /// Partner zvenku (influencer, spolupracovník) — v CRM nemá kartu.
+  PARTNER
+}
+
+/// Doporučitel (Fáze 5A, 2. část, Jakub 15. 10. 2026).
+///
+/// Má vlastní slevový kód (`DiscountCode.referrerId`). Nový klient, který
+/// s ním poprvé objedná, je jeho „přivedený“ a z první zaplacené objednávky
+/// mu vznikne odměna — procento z ceny po slevě bez DPH. **Vyplácí se
+/// ručně**, administrátor ji v CRM jen odškrtne.
+///
+/// **Doporučitele, procenta a odměny vidí a mění jen administrátor.**
+/// Ostatní vidí na kartě klienta jen „Přivedl: …“ a u kódu, komu patří.
+model Referrer {
+  id String @id @default(cuid())
+
+  kind ReferrerKind
+
+  /// Jméno. U klienta se opíše z karty při založení — kdyby karta
+  /// nadobro zmizela, odměny pořád vědí, komu patřily. Zobrazuje se
+  /// jméno z karty, dokud karta je.
+  name String @db.VarChar(120)
+
+  /// Karta klienta, když doporučuje stávající klient. Jeden klient je
+  /// doporučitelem nejvýš jednou.
+  clientId String? @unique
+  client   Client? @relation("DoporucitelKlient", fields: [clientId], references: [id], onDelete: SetNull)
+
+  /// Kolik procent z první zaplacené objednávky bez DPH dostane
+  /// (0,01–100). Změna se týká jen odměn, které vzniknou potom.
+  rewardPercent Decimal @db.Decimal(5, 2)
+
+  /// Poznámka pro administrátora (jak se vyplácí, dohoda). Nikde jinde se neukazuje.
+  note String? @db.VarChar(200)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kody       DiscountCode[]
+  privedeni  Client[]         @relation("PrivedenyKlient")
+  objednavky Order[]
+  odmeny     ReferralReward[]
+
+  @@map("referrers")
+}
+
+/// Odměna doporučiteli za první zaplacenou objednávku přivedeného klienta.
+///
+/// Vzniká a zaniká jen přes `prepocitejOdmenu()` (`src/lib/doporuceni.ts`)
+/// podle stavu objednávky: zaplacená a nesmazaná ji má, jinak ne.
+/// **Vyplacená odměna se sama nikdy nesmaže** — peníze už odešly.
+model ReferralReward {
+  id String @id @default(cuid())
+
+  referrerId String
+  referrer   Referrer @relation(fields: [referrerId], references: [id], onDelete: Restrict)
+
+  orderId String @unique
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  /// Procento a základ ze chvíle zaplacení — pozdější změna procenta ani
+  /// ceníku odměnu nepřepočítá.
+  percent  Decimal @db.Decimal(5, 2)
+  /// Cena objednávky po slevě bez DPH.
+  base     Decimal @db.Decimal(18, 2)
+  amount   Decimal @db.Decimal(18, 2)
+  currency String  @db.Char(3)
+
+  /// Kdy a kdo odškrtl, že je vyplacená. Prázdné = k výplatě.
+  paidOutAt   DateTime?
+  paidOutById String?
+  paidOutBy   User?     @relation("OdmenuVyplatil", fields: [paidOutById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([referrerId])
+  @@map("referral_rewards")
+}
+
+/// Hotová pravidla „když se stane X, udělej Y“ (Fáze 5D, Jakub 18. 10. 2026).
+/// Čtyři řádky s pevným id vznikly migrací, nepřidávají se ani nemažou —
+/// administrátor je jen zapíná a nastavuje (stránka Pravidla). Logika je
+/// v `src/lib/pravidla.ts`.
+model AutomationRule {
+  /// `nechodi-zprava`, `lekce-oznameni`, `zaplaceno-stitek` (`nechodi-ukol`
+  /// zaniklo 20. 10. 2026).
+  id      String  @id @db.VarChar(32)
+  enabled Boolean @default(false)
+
+  /// Zpráva klientovi (Nechodí → zpráva) — nadpis oznámení a text.
+  messageTitle String? @db.VarChar(80)
+  messageText  String? @db.VarChar(1000)
+
+  /// Zaplaceno → štítek: po zaplacení tohoto produktu tenhle štítek.
+  productId String?
+  product   Product?   @relation(fields: [productId], references: [id], onDelete: SetNull)
+  tagId     String?
+  tag       ClientTag? @relation(fields: [tagId], references: [id], onDelete: SetNull)
+
+  updatedAt DateTime @updatedAt
+
+  provedeno AutomationRun[]
+
+  @@map("automation_rules")
+}
+
+/// Co pravidlo komu udělalo — a zároveň pojistka „jen jednou“: dvojice
+/// pravidlo + klient + `refKey` je jedinečná. `refKey` je u Nechodí
+/// poslední návštěva (když klient přijde, další „nechodí“ je nové), u lekce
+/// id lekce, u štítku `<id produktu>:<id štítku>`.
+model AutomationRun {
+  id String @id @default(cuid())
+
+  ruleId String         @db.VarChar(32)
+  rule   AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  refKey String  @db.VarChar(64)
+  /// Krátce, co se stalo — pro časovou osu („úkol pro …“, „2 lekce“).
+  detail String? @db.VarChar(200)
+
+  createdAt DateTime @default(now())
+
+  @@unique([ruleId, clientId, refKey])
+  @@index([clientId, createdAt])
+  @@map("automation_runs")
+}
+
+/// Druh vlastního pole u klienta (Fáze 5B, Jakub 18. 10. 2026). Po založení
+/// se nemění — uložené hodnoty by přestaly sedět.
+enum ClientFieldKind {
+  TEXT
+  CISLO
+  DATUM
+  ANO_NE
+  VYBER
+}
+
+/// Vlastní pole u klienta — seznam spravuje administrátor v Nastavení →
+/// Vlastní pole, hodnoty vyplňuje každý přihlášený na kartě klienta.
+/// Klient je nevidí nikdy. Logika v `src/lib/vlastni-pole.ts`.
+model ClientField {
+  id       String          @id @default(cuid())
+  name     String          @db.VarChar(60)
+  kind     ClientFieldKind
+  /// Možnosti u druhu VYBER, jinak prázdné.
+  options  String[]        @default([])
+  position Int
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  /// Smazané pole zmizí z karty i filtrů; hodnoty v databázi zůstanou.
+  deletedAt DateTime?
+
+  hodnoty ClientFieldValue[]
+
+  @@index([position])
+  @@map("client_fields")
+}
+
+/// Hodnota vlastního pole u klienta. Ukládá se jako text v jednotném tvaru:
+/// číslo `1234.5`, datum `RRRR-MM-DD`, ano/ne `ano` / `ne`, výběr = možnost.
+model ClientFieldValue {
+  clientId String
+  client   Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  fieldId  String
+  field    ClientField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  value String @db.VarChar(500)
+
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+  updatedBy   User?    @relation("PoleUpravil", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@id([clientId, fieldId])
+  @@index([fieldId, value])
+  @@map("client_field_values")
+}
+
+/// Dotaz klienta u lekce a odpověď týmu (Fáze 5C, Jakub 18. 10. 2026).
+/// **Soukromý** — vidí ho jen jeho autor a tým, ostatní klienti nikdy.
+/// Jedna odpověď, kterou smí kdokoli z týmu napsat i opravit. Logika
+/// v `src/lib/vzdelavani/dotazy.ts`.
+model LessonQuestion {
+  id String @id @default(cuid())
+
+  lessonId String
+  lesson   CourseLesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  clientId String
+  client   Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  text      String   @db.VarChar(2000)
+  createdAt DateTime @default(now())
+
+  answer       String?   @db.VarChar(4000)
+  answeredAt   DateTime?
+  answeredById String?
+  answeredBy   User?     @relation("DotazOdpovedel", fields: [answeredById], references: [id], onDelete: SetNull)
+
+  /// Stažený klientem (jen nezodpovězený), nebo smazaný administrátorem.
+  deletedAt       DateTime?
+  deletedByClient Boolean   @default(false)
+
+  @@index([answeredAt, createdAt])
+  @@index([clientId, lessonId])
+  @@map("lesson_questions")
+}
+
+/// Dvojice pravidla Zaplaceno → štítek (Fáze 5D, Jakub 18. 10. 2026):
+/// po zaplacení produktu klient dostane štítek. Dvojic může být víc —
+/// objednávka se dvěma kurzy dá oba štítky. Nahradily jedinou dvojici
+/// `automation_rules.productId` / `tagId` (ty sloupce se už nečtou).
+model AutomationTagPair {
+  id String @id @default(cuid())
+
+  productId String
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  tagId     String
+  tag       ClientTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([productId, tagId])
+  @@map("automation_tag_pairs")
+}
+
+/// Volný termín konzultace (Fáze 5B, Jakub 19. 10. 2026). Vypisuje
+/// a maže **jen administrátor**, vidí každý přihlášený. Termín si
+/// zarezervuje nejvýš jeden klient (`consultation_bookings`). Logika
+/// v `src/lib/konzultace.ts`.
+model ConsultationSlot {
+  id String @id @default(cuid())
+
+  startsAt        DateTime
+  durationMinutes Int      @default(60)
+  /// Kde konzultace proběhne („Online“, „Kancelář“) — nepovinné.
+  place           String?  @db.VarChar(200)
+  /// Odkaz na připojení — jen `https://`; klient ho vidí až po rezervaci.
+  joinUrl         String?  @db.VarChar(500)
+
+  /// Kdo konzultaci vede — dostane úkol, když si ji klient zarezervuje.
+  hostId String?
+  host   User?   @relation("KonzultaceVede", fields: [hostId], references: [id], onDelete: SetNull)
+
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  /// Platná rezervace termínu. Zabírá se podmíněným zápisem (jen když je
+  /// prázdná), takže dva klienti, kteří kliknou ve stejnou chvíli, termín
+  /// nedostanou oba. Po zrušení se vyprázdní.
+  activeBookingId String?              @unique
+  activeBooking   ConsultationBooking? @relation("AktivniRezervace", fields: [activeBookingId], references: [id], onDelete: SetNull)
+
+  /// Smazaný termín. Smazat jde jen termín bez platné rezervace.
+  deletedAt DateTime?
+
+  rezervace ConsultationBooking[] @relation("RezervaceTerminu")
+
+  @@index([startsAt])
+  @@map("consultation_slots")
+}
+
+/// Rezervace termínu klientem (Fáze 5B, 19. 10. 2026). Každá platná
+/// rezervace spotřebuje jednu zaplacenou konzultaci; zrušená ji vrací.
+/// **Platná rezervace na termín je nejvýš jedna** — hlídá to
+/// `consultation_slots.activeBookingId` (podmíněný zápis).
+model ConsultationBooking {
+  id String @id @default(cuid())
+
+  slotId    String
+  slot      ConsultationSlot  @relation("RezervaceTerminu", fields: [slotId], references: [id], onDelete: Restrict)
+  /// Opačná strana `activeBookingId` — vyplněná jen u platné rezervace.
+  aktivniNa ConsultationSlot? @relation("AktivniRezervace")
+  clientId  String
+  client    Client            @relation(fields: [clientId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  /// Zrušeno — klientem (`cancelledByClient`), nebo administrátorem
+  /// (`cancelledById`). Řádek zůstává jako stopa pro časovou osu.
+  cancelledAt       DateTime?
+  cancelledByClient Boolean   @default(false)
+  cancelledById     String?
+  cancelledBy       User?     @relation("RezervaceZrusil", fields: [cancelledById], references: [id], onDelete: SetNull)
+
+  /// Úkol pro toho, kdo konzultaci vede. Po zrušení se smaže.
+  taskId String? @unique
+  task   Task?   @relation("UkolNaKonzultaci", fields: [taskId], references: [id], onDelete: SetNull)
+
+  /// Kdy odešla připomínka den předem (ranní plánovač) — jen jednou.
+  remindedAt DateTime?
+
+  @@index([clientId])
+  @@index([slotId])
+  @@map("consultation_bookings")
+}
+
+/// Odchozí webhook (Jakub, 19. 10. 2026): CRM pošle zprávu o události na
+/// adresu jiné služby (Zapier, Make…). Zakládá a mění **jen
+/// administrátor**. Ve zprávách nikdy nejsou e-maily ani telefony.
+/// Logika v `src/lib/webhooky.ts`.
+model OutgoingWebhook {
+  id String @id @default(cuid())
+
+  name String @db.VarChar(100)
+  /// Jen `https://` a ne adresa vnitřní sítě (`overAdresu()`).
+  url  String @db.VarChar(500)
+
+  /// Tajemství k podpisu zpráv, zašifrované (`zasifruj()`). Administrátor
+  /// ho uvidí jen jednou, při založení.
+  secretEncrypted String
+
+  /// Události, o kterých se posílá zpráva (`UDALOSTI_WEBHOOKU`).
+  events String[]
+  active Boolean  @default(true)
+
+  /// Poslední pokus o doručení — pro přehled v Nastavení.
+  lastAttemptAt DateTime?
+  lastStatus    Int?
+  lastError     String?   @db.VarChar(200)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@map("outgoing_webhooks")
+}
+
+/// Vlastní pravidlo „když platí podmínky, udělej akce“ (Fáze 5D, 2. část,
+/// Jakub 19. 10. 2026). Skládá, zapíná a maže **jen administrátor**, vidí
+/// každý přihlášený. Vyhodnocuje se jen ranním plánovačem. Podmínky a akce
+/// jsou JSON ověřený schématem (`src/lib/vlastni-pravidla-druhy.ts`).
+model CustomRule {
+  id String @id @default(cuid())
+
+  name       String  @db.VarChar(100)
+  enabled    Boolean @default(false)
+  conditions Json
+  actions    Json
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  provedeno CustomRuleRun[]
+
+  @@map("custom_rules")
+}
+
+/// Co vlastní pravidlo u klienta udělalo — jedinečná trojice pravidlo +
+/// klient + `refKey` hlídá „jen jednou“ (u Nechodí a konce členství je
+/// `refKey` epizoda, jinak `jednou`). Zapisuje se dřív, než se akce stane.
+model CustomRuleRun {
+  id String @id @default(cuid())
+
+  ruleId   String
+  rule     CustomRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  clientId String
+  client   Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  refKey String  @db.VarChar(64)
+  detail String? @db.VarChar(200)
+
+  createdAt DateTime @default(now())
+
+  @@unique([ruleId, clientId, refKey])
+  @@index([clientId, createdAt])
+  @@map("custom_rule_runs")
+}
+
+/// Platba objednávky přes platební bránu (GoPay, Jakub 19. 10. 2026).
+/// Jedna objednávka může mít víc pokusů o platbu; zaplacená je ta se
+/// stavem `PAID`. Stav se vždy ověřuje přímo u brány, oznámení se nevěří.
+/// Logika v `src/lib/platby/`.
+model Payment {
+  id String @id @default(cuid())
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  /// `GOPAY` — připraveno na další brány.
+  provider   String @db.VarChar(20)
+  /// Id platby u brány (u GoPay číslo, uložené jako text).
+  providerId String @unique @db.VarChar(64)
+
+  /// Částka s DPH v korunách (k bráně jde v haléřích).
+  amount   Decimal @db.Decimal(18, 2)
+  currency String  @db.Char(3)
+
+  /// Stav u brány: CREATED, PAID, CANCELED, TIMEOUTED, REFUNDED…
+  state String  @db.VarChar(30)
+  /// Adresa platební stránky — klient se na ni přesměruje.
+  gwUrl String? @db.VarChar(500)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  paidAt    DateTime?
+
+  /// Vrácení peněz — spouští jen administrátor.
+  refundedAt   DateTime?
+  refundedById String?
+  refundedBy   User?     @relation("PlatbuVratil", fields: [refundedById], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@map("payments")
+}
+
+enum InvoiceKind {
+  /// Faktura — daňový doklad (po zaplacení objednávky).
+  FAKTURA
+  /// Opravný daňový doklad (dobropis) k faktuře — jen administrátor.
+  DOBROPIS
+}
+
+/// Faktura nebo dobropis (Jakub, 19. 10. 2026). **Daňový doklad se nemění
+/// ani nemaže** — údaje dodavatele, odběratele a položky se při vystavení
+/// opíšou (`supplier`, `customer`, `items`), aby pozdější změna v CRM
+/// doklad nepřepsala. Číslo `FV-RRRR-NNNN` / `DB-RRRR-NNNN` přiděluje
+/// databáze spouštěčem `invoices_cislo` — v kódu se nevymýšlí.
+/// Logika v `src/lib/faktury/`.
+model Invoice {
+  id String @id @default(cuid())
+
+  number String      @unique @default("")
+  kind   InvoiceKind
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  /// U dobropisu faktura, kterou opravuje.
+  correctsId String?
+  corrects   Invoice?  @relation("Dobropis", fields: [correctsId], references: [id], onDelete: Restrict)
+  dobropisy  Invoice[] @relation("Dobropis")
+
+  issuedAt  DateTime @default(now())
+  /// Datum uskutečnění zdanitelného plnění — den zaplacení.
+  taxableAt DateTime
+
+  currency  String  @db.Char(3)
+  /// Součty v korunách; u dobropisu záporné.
+  baseTotal Decimal @db.Decimal(18, 2)
+  vatTotal  Decimal @db.Decimal(18, 2)
+  total     Decimal @db.Decimal(18, 2)
+
+  /// Zjednodušený daňový doklad (odběratel bez adresy, do 10 000 Kč).
+  simplified Boolean @default(false)
+
+  /// Opis údajů ve chvíli vystavení (JSON).
+  supplier Json
+  customer Json
+  items    Json
+
+  /// Kdo vystavil ručně (dobropis, starší objednávka); prázdné = CRM samo.
+  createdById String?
+  createdBy   User?   @relation("FakturuVystavil", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@unique([orderId, kind])
+  @@index([issuedAt])
+  @@map("invoices")
+}
+
+/// Počítadlo čísel dokladů podle řady (`FV`, `DB`) a roku.
+model InvoiceCounter {
+  prefix String @db.VarChar(4)
+  year   Int
+  last   Int
+
+  @@id([prefix, year])
+  @@map("invoice_counters")
 }

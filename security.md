@@ -14,33 +14,52 @@ a kde má vědomé výjimky. Výjimka, která tu není, je chyba.
 Každá obsluha adresy (`route.ts`) na začátku ověří přihlášení:
 `getViewer()` a při `null` odpověď `401`. Obsluha adresy **nemá rám
 aplikace**, takže si musí sama zkontrolovat i `viewer.chybiDvoufazove`
-(vzor: `src/app/(app)/hovory/export/route.ts`).
+(vzor: `src/app/(app)/dashboard/export/route.ts`).
 
 **Vědomé výjimky — adresy bez přihlášení.** Každá se prokazuje jinak
 a má omezený počet pokusů:
 
-| Adresa                                      | Čím se prokazuje                                        |
-| ------------------------------------------- | ------------------------------------------------------- |
-| `POST /api/leady`                           | klíč `LEAD_API_KEY` v hlavičce                          |
-| `POST /api/objednavky`                      | klíč `ORDER_API_KEY` v hlavičce                         |
-| `POST /api/smartemailing/odhlaseni`         | HTTP Basic, heslo `SMARTEMAILING_WEBHOOK_SECRET`        |
-| `/api/auth/*` (Auth.js)                     | je to samotné přihlášení — e-mail, heslo, případně kód  |
-| akce Zapomenuté heslo                       | nic neprozradí; omezený počet, zpracování po odpovědi   |
-| akce Nastavit heslo z odkazu                | jednorázový token (256 bitů, platí 60 minut)            |
-| `POST /api/uploadthing` (odpověď o nahrání) | podpis UploadThingu naším `UPLOADTHING_TOKEN`           |
-| `POST /api/mcp` (MCP server pro AI)         | klíč z Mého profilu (`Bearer crm_…`), jen administrátor |
-| `/ucet/prihlaseni` (přihlášení klienta)     | e-mail a heslo účtu klienta, případně kód; 5 pokusů     |
-| `/ucet/zapomenute-heslo`                    | nic neprozradí; omezený počet, zpracování po odpovědi   |
-| `/ucet/nove-heslo` (heslo klienta z odkazu) | jednorázový token (256 bitů, platí 60 minut)            |
-| `/ucet/zasady`, `/ucet/podminky`            | jen texty pro klienty, žádná data                       |
-| `POST /api/planovac` (denní plánovač)       | klíč `PLANOVAC_KEY` (Bearer); 5 špatných za 15 minut    |
-| manifesty, ikony a `sw-klient.js`           | jen název, ikony a skript oznámení, žádná data          |
+| Adresa                                        | Čím se prokazuje                                          |
+| --------------------------------------------- | --------------------------------------------------------- |
+| `POST /api/leady`                             | klíč `LEAD_API_KEY` v hlavičce                            |
+| `POST /api/objednavky`                        | klíč `ORDER_API_KEY` v hlavičce                           |
+| `POST /api/objednavky/kod` (ověření slevy)    | klíč `ORDER_API_KEY` v hlavičce; nic nezapisuje           |
+| `POST /api/smartemailing/odhlaseni`           | HTTP Basic, heslo `SMARTEMAILING_WEBHOOK_SECRET`          |
+| `/api/auth/*` (Auth.js)                       | je to samotné přihlášení — e-mail, heslo, případně kód    |
+| akce Zapomenuté heslo                         | nic neprozradí; omezený počet, zpracování po odpovědi     |
+| akce Nastavit heslo z odkazu                  | jednorázový token (256 bitů, platí 60 minut)              |
+| `POST /api/uploadthing` (odpověď o nahrání)   | podpis UploadThingu naším `UPLOADTHING_TOKEN`             |
+| `POST /api/mcp` (MCP server pro AI)           | klíč z Mého profilu (`Bearer crm_…`), jen administrátor   |
+| `/ucet/prihlaseni` (přihlášení klienta)       | e-mail a heslo účtu klienta, případně kód; 5 pokusů       |
+| `/ucet/zapomenute-heslo`                      | nic neprozradí; omezený počet, zpracování po odpovědi     |
+| `/ucet/nove-heslo` (heslo klienta z odkazu)   | jednorázový token (256 bitů, platí 60 minut)              |
+| `/ucet/zasady`, `/ucet/podminky`              | jen texty pro klienty, žádná data                         |
+| `/ucet/obchodni-podminky`                     | jen text pro zákazníky před nákupem, žádná data           |
+| `POST /api/planovac` (denní plánovač)         | klíč `PLANOVAC_KEY` (Bearer); 5 špatných za 15 minut      |
+| `GET/POST /api/platby/gopay` (oznámení GoPay) | jen id platby; stav se vždy ověří u GoPay, neznámé id 404 |
+| `/ucet/platba` (návrat z platební brány)      | jen číslo objednávky a stav; stav se ověří u GoPay        |
+| manifesty, ikony a `sw-klient.js`             | jen název, ikony a skript oznámení, žádná data            |
 
 **Denní plánovač (krok 3A, Jakub souhlasil 4. 10. 2026)** volá jednou
 denně plánovaná služba na Railway. Nečte tělo požadavku — zvenku se nedá
 nic předat, jen spustit upozornění na konec členství a úkoly na
 prodloužení, které by stejně proběhly. Obojí je bezpečné spustit
 opakovaně (ke každému konci jen jedno upozornění a jeden úkol).
+
+**Platební brána GoPay (Jakub souhlasil 19. 10. 2026)** má dvě adresy
+bez přihlášení. Oznámení (`/api/platby/gopay`) nese jen id platby —
+**CRM mu nevěří**: platbu musí znát a její stav i částku si zjistí přímo
+u GoPay, teprve pak objednávku zaplatí (`src/lib/platby/platby.ts`).
+Návrat klienta (`/ucet/platba`) ukáže jen číslo objednávky a stav. Klíče
+`GOPAY_*` jsou tajemství (pravidlo 5); GoPay dostane e-mail plátce, číslo
+objednávky, produkty a částku — v zásadách mezi zpracovateli.
+
+**Ověření slevového kódu (Fáze 5A, Jakub souhlasil 14. 10. 2026)** volá
+Landing Page, aby zákazníkovi ukázala cenu po slevě ještě před objednáním.
+Prokazuje se stejným klíčem jako příjem objednávek (patří stejnému webu),
+má vlastní limit 30 dotazů za minutu z adresy a **nic nezapisuje** — kód
+se použije až objednávkou, která ho ověří znovu. Slevu počítá vždy CRM
+z ceníku, z požadavku se bere jen samotný kód.
 
 **Oznámení klientům (3A, 4. 10. 2026)** posílá server přes doručovací
 služby prohlížečů (Google, Apple, Mozilla, Microsoft). Obsah je
@@ -94,22 +113,21 @@ své klienty a manažer tým.
 
 | Role            | Co vidí a smí měnit                                                       |
 | --------------- | ------------------------------------------------------------------------- |
-| `UZIVATEL`      | všechny klienty, objednávky, hovory a portfolia; systém nespravuje        |
+| `UZIVATEL`      | všechny klienty a objednávky; systém nespravuje                           |
 | `ADMINISTRATOR` | navíc Správa, Nastavení, Smazané, SmartEmailing, ceník a stavy objednávek |
 
 **Co z pravidla platí dál:** nepřihlášený se nedostane nikam,
 administrátorské sekce se vynucují na serveru (`requireAdmin()`) a
 záznam mimo rozsah vrací 404, ne „nemáte oprávnění".
 
-- **Omezení patří do dotazu**, ne do zobrazení: `viditelniKlienti()`,
-  `viditelnaPortfolia()` a `viditelneObjednavky()` ze `src/lib/queries.ts`.
+- **Omezení patří do dotazu**, ne do zobrazení: `viditelniKlienti()`
+  a `viditelneObjednavky()` ze `src/lib/queries.ts`.
   Podmínky se nepíšou znovu — drží i `deletedAt: null`, takže odložený
   záznam neprojde ani administrátorovi.
 - **Akce, která dostane `id`, hledá záznam s podmínkou viditelnosti**
   (`where: { AND: [{ id }, viditelniKlienti(viewer)] }`). Když nic
   nenajde, odpoví jako u neexistujícího záznamu.
-- Přísnější pravidla u jednotlivých věcí (hovor upravuje jen autor
-  a administrátor, cizí profil jen administrátor, telefon kolegy vidí jen
+- Přísnější pravidla u jednotlivých věcí (cizí profil jen administrátor, telefon kolegy vidí jen
   majitel a administrátor, stav objednávky a přístup do programu jen
   administrátor) jsou v `CLAUDE.md`.
 
@@ -234,7 +252,7 @@ profilu vytvořil klíč. Co AI přečte, odchází k jejímu poskytovateli.
 **Vědomá výjimka z pravidla 8** — ale jen zčásti:
 
 - **Ven smí:** jména klientů, jejich objednávky, produkty, platnost
-  členství, souhlasy (s datem), poznámky a hovory, statistiky, jména
+  členství, souhlasy (s datem), poznámky, statistiky, jména
   kolegů a jejich přihlášení.
 - **Ven nesmí: e-maily a telefony** — klientů ani kolegů. Nástroje je
   z databáze nečtou a každá odpověď navíc projde `odpovedNastroje()`
@@ -266,6 +284,33 @@ profilu vytvořil klíč. Co AI přečte, odchází k jejímu poskytovateli.
   souboru s nastavením AI a ne do `.env` projektu — ten umí číst Claude
   a načítá se do kontejnerů.
 
+## 7b. Asistent AI v CRM: klienti jen pod přezdívkou
+
+Jakub to rozhodl 10. 10. 2026 (krok 4). Stránka **Asistent AI**
+(`/asistent`, `src/lib/asistent/`) posílá otázky a data z CRM
+k Anthropicu (model Claude Sonnet 5.5). Na rozdíl od MCP (oddíl 7)
+**jména klientů ven nejdou** — pravidlo 8 tu platí bez výjimky:
+
+- **Jen administrátor** (`requireAdmin()` ve stránce i akci). Uživatel ani
+  klient asistenta nemají.
+- **Klient je pro AI přezdívka `K-XXXXXX`** (HMAC z id klienta a klíče
+  z `AUTH_SECRET`). Nahrazuje se id i jméno ve výsledcích nástrojů
+  i v otázce (i bez diakritiky a malými písmeny); jména doplní CRM až
+  v okně. E-maily a telefony nahrazuje `bezOsobnichUdaju()`.
+- **Žádný volný text:** asistent nemá nástroje na poznámky,
+  přílohy, úkoly ani nic o týmu; pole `poznamka` se zahazuje. Jméno
+  v jiném tvaru („Novákovi“) přezdívka nezachytí — okno proto upozorňuje,
+  ať se člověk neptá jménem.
+- **Jen čtení**, stejné nástroje jako MCP (bez zápisu).
+- **Nic se neukládá:** rozhovor žije v prohlížeči. Do Aktivity jde jen
+  „Dotaz na asistenta AI“ a názvy použitých nástrojů.
+- **Nejvýš 20 otázek za den** na člověka.
+- Klíč `ANTHROPIC_API_KEY` je tajemství (pravidlo 5); bez něj je asistent
+  vypnutý. Anthropic data z API nepoužívá k trénování a drží je nejvýš
+  30 dní; v zásadách ochrany údajů je mezi zpracovateli.
+- Hlídá to `e2e/asistent.spec.ts` proti napodobenině Anthropicu: v tom,
+  co by odešlo, nesmí být jméno, e-mail ani telefon.
+
 ## 8. Prohlížeč spustí jen naše skripty (Content-Security-Policy)
 
 Jakub to zadal 5. 10. 2026. Každá stránka posílá prohlížeči hlavičku
@@ -289,3 +334,91 @@ prohlížeč ho nespustí a nepošle data jinam než do CRM.
 
 Nová služba, se kterou mluví prohlížeč, se do pravidel přidává jen
 vědomě a zapíše se sem.
+
+## 9. Odchozí webhooky posílají data jiné službě
+
+Jakub to rozhodl 19. 10. 2026. Administrátor v Nastavení → Webhooky zadá
+adresu jiné služby (Zapier, Make…) a CRM jí posílá zprávy o událostech:
+nová a zaplacená objednávka, nový klient, rezervace konzultace, dokončený
+kurz (`src/lib/webhooky.ts`).
+
+**Vědomá výjimka z pravidla 8 — jen zčásti** (stejně jako MCP):
+
+- **Ven smí:** id a jméno klienta, číslo, stav, produkty a částky
+  objednávky, termín konzultace, název kurzu a číslo certifikátu, zdroj
+  klienta.
+- **Ven nesmí: e-maily a telefony.** Data se skládají výčtem polí
+  (`data…()` ve `webhooky.ts`), nic se neposílá „celé“; test kontroluje,
+  že ve zprávě není `@`.
+
+**Co se proti zneužití dělá:**
+
+- Zakládá a mění **jen administrátor** (`requireAdmin()` v akcích, rám
+  Nastavení), uživatel dostane 404 — hlídá test i při přímém volání.
+- **Jen `https` a ne do vnitřní sítě** (`overAdresu()`): odmítne
+  `localhost`, `.internal`, `.local` a název, který se přeloží na
+  soukromou, místní nebo vyhrazenou IP. Kontroluje se při uložení i před
+  každým odesláním; přesměrování se nenásleduje. Jinak by šlo přes
+  webhook z našeho serveru volat služby, které zvenku vidět nejsou (SSRF).
+- **Výjimka jen pro testy:** `WEBHOOKY_ZKUSEBNI_ADRESA` povolí napodobeninu
+  v testovacím kontejneru. **Na Railway se nezadává.**
+- Zprávy jsou **podepsané** (HMAC-SHA256, hlavička `X-CRM-Podpis`).
+  Tajemství je v databázi zašifrované, administrátor ho vidí jen jednou
+  při založení a do auditu nejde nikdy.
+- Nejvýš 10 webhooků, odeslání nejdéle 10 s, bez opakování. Nedoručená
+  zpráva je v Chybách (jen druh a důvod, obsah zprávy se neukládá).
+- Zásady ochrany údajů uvádějí „služby pro propojení systémů“ mezi
+  zpracovateli.
+
+## 10. Konzultace v Google Kalendáři
+
+Jakub to rozhodl 20. 10. 2026. Rezervace konzultace se zapíše do
+**jednoho firemního Google Kalendáře** (`src/lib/kalendar.ts`), zrušení
+ji smaže. Připojuje a odpojuje jen administrátor v Nastavení → Kalendář.
+
+**Vědomá výjimka z pravidla 8 — jen zčásti:**
+
+- **Ven smí:** jméno klienta, čas a délka konzultace, místo, odkaz na
+  připojení a jméno toho, kdo vede.
+- **Ven nesmí: e-maily a telefony.** Událost se skládá výčtem polí;
+  klient se do události **nezve** (pozvánka by Googlu dala jeho e-mail).
+  Hlídá to `e2e/kalendar.spec.ts`.
+
+**Co se proti zneužití dělá:**
+
+- Přihlášení **servisním účtem**: kalendář je s ním nasdílený a CRM
+  nevidí nic jiného. Rozsah `calendar.events`, ne celý účet Google.
+- Klíč (`GOOGLE_KALENDAR_UCET`, `GOOGLE_KALENDAR_KLIC`) je tajemství
+  (pravidlo 5), jen v prostředí; v Nastavení se ukazuje jen adresa
+  účtu. **V testech se klíč vymýšlí při každém běhu** (`e2e/server.sh`),
+  v repozitáři žádný není.
+- Volá se jen pevná adresa Googlu, přesměrování se nenásleduje.
+  `GOOGLE_KALENDAR_API` a `_TOKEN_URL` jsou jen pro napodobeninu v testech
+  — **na Railway se nezadávají.**
+- Zápis jde až po odpovědi; výpadek Googlu rezervaci neshodí, objeví se
+  v Chybách (jen druh a důvod).
+- Zásady ochrany údajů uvádějí Google (Kalendář) mezi zpracovateli.
+
+## 11. Ukázkový režim: veřejná hesla dvou zkušebních účtů
+
+Jakub to rozhodl 22. 10. 2026 (`docs/funkce/ukazka.md`). Se zapnutým
+`UKAZKA=1` jsou na přihlašovacích stránkách vypsané e-mail a heslo
+zkušebního **člena týmu** (administrátor) a **klienta**. **Vědomá výjimka
+z pravidla 5** (hesla v kódu) a z „heslo zadává jen sám uživatel“ — data
+na takovém serveru jsou vymyšlená a každou noc se vrátí do výchozího stavu.
+
+**Co se proti zneužití dělá:**
+
+- **Bez `UKAZKA=1` účty neexistují** — zakládá je až noční obnova, která
+  jinde nepoběží (`obnovUkazku()` odmítne). Známé heslo na běžném serveru
+  nic neotevře; `jeUkazkovyTym()` / `jeUkazkovyKlient()` jsou bez režimu
+  vždy `false`.
+- **Nic neodchází ven:** e-maily, SmartEmailing, webhooky, Google
+  Kalendář, oznámení, Asistent AI a nahrávání příloh jsou vypnuté na
+  nejnižším místě (kde se volá služba), ne skrytím tlačítka.
+- **Ukázkové účty nezmění** heslo, e-mail, dvoufázové ověření ani
+  povinné dvoufázové ověření, nevytvoří klíč MCP a člen týmu **nevidí
+  Správu uživatelů** (404, `requireSpravceUzivatelu()`) ani e-maily
+  kolegů. Účty týmu (i Jakubův) noční obnova nemaže.
+- Karta ukázkového klienta je chráněná proti smazání, sloučení, úpravě
+  a zrušení účtu — jinak by jeden návštěvník zamkl ostatní.

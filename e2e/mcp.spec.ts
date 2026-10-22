@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 import {
@@ -168,7 +169,6 @@ test.describe("MCP: nástroje", () => {
     for (const [nazev, args] of [
       ["detail_klienta", { klientId: klient.id }],
       ["objednavky_klienta", { klientId: klient.id }],
-      ["hovory_klienta", { klientId: klient.id }],
       ["seznam_objednavek", {}],
       ["statistiky_objednavek", { obdobi: "letos" }],
       ["prihlaseni_tymu", { obdobi: "7dni" }],
@@ -183,6 +183,42 @@ test.describe("MCP: nástroje", () => {
       arguments: { klientId: "neexistuje" },
     });
     expect((await neznamy.json()).result.isError).toBe(true);
+  });
+});
+
+test.describe("MCP: novější verze protokolu", () => {
+  // Claude Code se připojuje revizí 2026-07-28 (MCP 2, 18. 10. 2026). Do
+  // té doby server odpověděl 400 a klient přešel na starší verzi.
+  test("klient MCP 2 se připojí revizí 2026-07-28 a volá nástroje", async ({ baseURL }) => {
+    const admin = await zalozUzivatele("admin");
+    const klic = await zalozKlic(admin.id);
+
+    // Klient MCP 2 se sám připojuje starší verzí; připnutí zakáže návrat
+    // k ní, takže test projde, jen když server novou revizi opravdu umí.
+    const klient = new Client(
+      { name: "e2e", version: "1.0.0" },
+      { versionNegotiation: { mode: { pin: "2026-07-28" } } },
+    );
+    await klient.connect(
+      new StreamableHTTPClientTransport(new URL("/api/mcp", baseURL), {
+        requestInit: {
+          headers: { authorization: `Bearer ${klic}`, "x-forwarded-for": nahodnaAdresa() },
+        },
+      }),
+    );
+    try {
+      expect(klient.getNegotiatedProtocolVersion()).toBe("2026-07-28");
+      const { tools } = await klient.listTools();
+      expect(tools.map((t) => t.name)).toContain("hledat_klienty");
+      // Klíč jen ke čtení nástroje pro zápis nedostane ani touhle cestou.
+      expect(tools.map((t) => t.name)).not.toContain("pridat_poznamku");
+
+      const cenik = await klient.callTool({ name: "cenik", arguments: {} });
+      expect(cenik.isError ?? false).toBe(false);
+      expect(JSON.stringify(cenik.content)).not.toMatch(KONTAKT);
+    } finally {
+      await klient.close();
+    }
   });
 });
 
@@ -275,82 +311,90 @@ test.describe("MCP: zápis poznámek a úkolů", () => {
 });
 
 test.describe("MCP: klíč v Mém profilu", () => {
-  test("klíč se zápisem jde vytvořit zaškrtnutím a seznam to ukazuje", async ({ page }) => {
-    const admin = await zalozUzivatele("admin");
-    await prihlas(page, admin.email, admin.heslo);
-    await expect(page).toHaveURL(/\/dashboard$/);
-    await otevriProfil(page);
+  test(
+    "klíč se zápisem jde vytvořit zaškrtnutím a seznam to ukazuje",
+    { tag: "@telefon" },
+    async ({ page }) => {
+      const admin = await zalozUzivatele("admin");
+      await prihlas(page, admin.email, admin.heslo);
+      await expect(page).toHaveURL(/\/dashboard$/);
+      await otevriProfil(page);
 
-    const nazev = `Claude se zápisem ${pripona()}`;
-    await page.getByLabel("Název klíče").fill(nazev);
-    await page.getByLabel("Smí i zapisovat poznámky a úkoly").check();
-    await page.getByLabel("Pro potvrzení zadej svoje heslo").last().fill(admin.heslo);
-    await page.getByRole("button", { name: "Vytvořit klíč" }).click();
-    await expect(page.getByTestId("novy-klic")).toBeVisible();
-    await page.getByRole("button", { name: "Hotovo, klíč mám uložený" }).click();
+      const nazev = `Claude se zápisem ${pripona()}`;
+      await page.getByLabel("Název klíče").fill(nazev);
+      await page.getByLabel("Smí i zapisovat poznámky a úkoly").check();
+      await page.getByLabel("Pro potvrzení zadej svoje heslo").last().fill(admin.heslo);
+      await page.getByRole("button", { name: "Vytvořit klíč" }).click();
+      await expect(page.getByTestId("novy-klic")).toBeVisible();
+      await page.getByRole("button", { name: "Hotovo, klíč mám uložený" }).click();
 
-    const radek = page
-      .getByRole("list", { name: "Moje klíče pro AI" })
-      .getByRole("listitem")
-      .filter({ hasText: nazev });
-    await expect(radek.getByText("čtení a zápis")).toBeVisible();
-    await bezVodorovnehoPosuvu(page);
+      const radek = page
+        .getByRole("list", { name: "Moje klíče pro AI" })
+        .getByRole("listitem")
+        .filter({ hasText: nazev });
+      await expect(radek.getByText("čtení a zápis")).toBeVisible();
+      await bezVodorovnehoPosuvu(page);
 
-    const [zaznam] = await dotaz<{ canWrite: boolean }>(
-      `SELECT "canWrite" FROM "mcp_keys" WHERE "userId" = $1`,
-      [admin.id],
-    );
-    expect(zaznam.canWrite).toBe(true);
-  });
+      const [zaznam] = await dotaz<{ canWrite: boolean }>(
+        `SELECT "canWrite" FROM "mcp_keys" WHERE "userId" = $1`,
+        [admin.id],
+      );
+      expect(zaznam.canWrite).toBe(true);
+    },
+  );
 
-  test("administrátor vytvoří klíč, použije ho a zruší", async ({ page, request }) => {
-    const admin = await zalozUzivatele("admin");
-    await prihlas(page, admin.email, admin.heslo);
-    await expect(page).toHaveURL(/\/dashboard$/);
-    await otevriProfil(page);
+  test(
+    "administrátor vytvoří klíč, použije ho a zruší",
+    { tag: "@telefon" },
+    async ({ page, request }) => {
+      const admin = await zalozUzivatele("admin");
+      await prihlas(page, admin.email, admin.heslo);
+      await expect(page).toHaveURL(/\/dashboard$/);
+      await otevriProfil(page);
 
-    const nazev = `Claude ${pripona()}`;
-    await page.getByLabel("Název klíče").fill(nazev);
-    await page.getByLabel("Pro potvrzení zadej svoje heslo").last().fill(admin.heslo);
-    await page.getByRole("button", { name: "Vytvořit klíč" }).click();
+      const nazev = `Claude ${pripona()}`;
+      await page.getByLabel("Název klíče").fill(nazev);
+      await page.getByLabel("Pro potvrzení zadej svoje heslo").last().fill(admin.heslo);
+      await page.getByRole("button", { name: "Vytvořit klíč" }).click();
 
-    const klic = (await page.getByTestId("novy-klic").textContent())?.trim() ?? "";
-    expect(klic).toMatch(/^crm_[\w-]{40,}$/);
-    await expect(page.getByText("CRM_MCP_KLIC").first()).toBeVisible();
-    await bezVodorovnehoPosuvu(page);
+      const klic = (await page.getByTestId("novy-klic").textContent())?.trim() ?? "";
+      expect(klic).toMatch(/^crm_[\w-]{40,}$/);
+      await expect(page.getByText("CRM_MCP_KLIC").first()).toBeVisible();
+      await bezVodorovnehoPosuvu(page);
 
-    // Klíč opravdu otevře MCP.
-    expect((await mcp(request, klic, "tools/list")).status()).toBe(200);
+      // Klíč opravdu otevře MCP.
+      expect((await mcp(request, klic, "tools/list")).status()).toBe(200);
 
-    await page.getByRole("button", { name: "Hotovo, klíč mám uložený" }).click();
-    await expect(page.getByTestId("novy-klic")).toHaveCount(0);
-    // Klíč se znovu nezobrazí — v seznamu je jen jeho začátek.
-    await expect(page.getByText(klic)).toHaveCount(0);
+      await page.getByRole("button", { name: "Hotovo, klíč mám uložený" }).click();
+      await expect(page.getByTestId("novy-klic")).toHaveCount(0);
+      // Klíč se znovu nezobrazí — v seznamu je jen jeho začátek.
+      await expect(page.getByText(klic)).toHaveCount(0);
 
-    const radek = page
-      .getByRole("list", { name: "Moje klíče pro AI" })
-      .getByRole("listitem")
-      .filter({ hasText: nazev });
-    await expect(radek.getByText("Platný")).toBeVisible();
-    // Bez zaškrtnutí je klíč jen ke čtení.
-    await expect(radek.getByText("jen čtení")).toBeVisible();
+      const radek = page
+        .getByRole("list", { name: "Moje klíče pro AI" })
+        .getByRole("listitem")
+        .filter({ hasText: nazev });
+      await expect(radek.getByText("Platný")).toBeVisible();
+      // Bez zaškrtnutí je klíč jen ke čtení.
+      await expect(radek.getByText("jen čtení")).toBeVisible();
 
-    // Zrušení s potvrzovacím oknem; nejdřív si to rozmyslet.
-    await radek.getByRole("button", { name: "Zrušit" }).click();
-    const okno = page.getByRole("dialog");
-    await expect(okno.getByText(nazev)).toBeVisible();
-    await expect(okno.getByText("Tuhle akci nelze vzít zpět")).toBeVisible();
-    await okno.getByRole("button", { name: "Zrušit", exact: true }).click();
-    await expect(okno).toHaveCount(0);
-    expect((await mcp(request, klic, "tools/list")).status()).toBe(200);
+      // Zrušení s potvrzovacím oknem; nejdřív si to rozmyslet.
+      await radek.getByRole("button", { name: "Zrušit" }).click();
+      const okno = page.getByRole("dialog");
+      await expect(okno.getByText(nazev)).toBeVisible();
+      await expect(okno.getByText("Tuhle akci nelze vzít zpět")).toBeVisible();
+      await okno.getByRole("button", { name: "Zrušit", exact: true }).click();
+      await expect(okno).toHaveCount(0);
+      expect((await mcp(request, klic, "tools/list")).status()).toBe(200);
 
-    await radek.getByRole("button", { name: "Zrušit" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Zrušit klíč" }).click();
-    await cekejNaUspech(page, `Zrušeno: ${nazev}`);
-    await expect(radek.getByText("Zrušený")).toBeVisible();
+      await radek.getByRole("button", { name: "Zrušit" }).click();
+      await page.getByRole("dialog").getByRole("button", { name: "Zrušit klíč" }).click();
+      await cekejNaUspech(page, `Zrušeno: ${nazev}`);
+      await expect(radek.getByText("Zrušený")).toBeVisible();
 
-    expect((await mcp(request, klic, "tools/list")).status()).toBe(401);
-  });
+      expect((await mcp(request, klic, "tools/list")).status()).toBe(401);
+    },
+  );
 
   test("se špatným heslem klíč nevznikne", async ({ page }) => {
     const admin = await zalozUzivatele("admin");

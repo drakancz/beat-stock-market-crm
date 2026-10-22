@@ -7,6 +7,7 @@ import { zapisDoAuditu } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { upozorniKlienta, type Doruceni } from "@/lib/klient/oznameni";
 import { viditelniKlienti } from "@/lib/queries";
+import { pocet } from "@/lib/mnozne";
 import { requireAdmin } from "@/lib/session";
 
 /**
@@ -68,22 +69,30 @@ export async function posliZpravuKlientovi(
     };
   }
 
+  return {
+    ok: true,
+    zprava: POPIS_DORUCENI[await odesliZpravu(admin.id, klient, vstup.data.text)],
+  };
+}
+
+/** Uloží zprávu, zapíše audit a doručí ji. Společné pro jednu i hromadnou zprávu. */
+async function odesliZpravu(
+  adminId: string,
+  klient: { id: string; name: string },
+  text: string,
+  hromadne = false,
+): Promise<Doruceni> {
   const zprava = await db.$transaction(async (tx) => {
     const ulozena = await tx.clientMessage.create({
-      data: {
-        clientId: klient.id,
-        authorId: admin.id,
-        text: vstup.data.text,
-        delivery: "JEN_UCET",
-      },
+      data: { clientId: klient.id, authorId: adminId, text, delivery: "JEN_UCET" },
       select: { id: true },
     });
     await zapisDoAuditu(tx, {
-      userId: admin.id,
+      userId: adminId,
       entity: "clients",
       entityId: klient.id,
       action: "klient.zprava-odeslana",
-      after: { klient: klient.name, zprava: ulozena.id },
+      after: { klient: klient.name, zprava: ulozena.id, ...(hromadne ? { hromadne: true } : {}) },
     });
     return ulozena;
   });
@@ -92,10 +101,10 @@ export async function posliZpravuKlientovi(
   // služba neodpovídá. Administrátor počká pár sekund a hned ví, jak to dopadlo.
   const doruceni = await upozorniKlienta(klient.id, {
     nadpis: "Zpráva od Beat Stock Market",
-    text: vstup.data.text,
+    text,
     odkaz: "/ucet/zpravy",
     znacka: `zprava-${zprava.id}`,
-    odstavceEmailu: ["Dobrý den, máte od nás novou zprávu:", vstup.data.text],
+    odstavceEmailu: ["Dobrý den, máte od nás novou zprávu:", text],
   });
 
   await db.clientMessage.update({
@@ -104,5 +113,61 @@ export async function posliZpravuKlientovi(
   });
 
   revalidatePath(`/klienti/${klient.id}`);
-  return { ok: true, zprava: POPIS_DORUCENI[doruceni] };
+  return doruceni;
+}
+
+/** Nejvíc klientů v jedné hromadné zprávě — kampaně patří do SmartEmailingu. */
+const MAX_HROMADNE_ZPRAVY = 200;
+
+/**
+ * Hromadná zpráva vybraným klientům (Fáze 5B, Jakub 11. 10. 2026).
+ * **Jen administrátor**, jen klientům s aktivním účtem — ostatní se
+ * přeskočí a hláška řekne kolik. Každý klient dostane vlastní zprávu
+ * (stejně jako jednotlivá), audit u každého s `hromadne: true`.
+ */
+export async function posliZpravuVybranym(
+  idsRaw: string[],
+  textRaw: string,
+): Promise<VysledekZpravy> {
+  const admin = await requireAdmin();
+
+  const vstup = z
+    .object({
+      ids: z
+        .array(z.string().trim().min(1).max(64))
+        .min(1, "Vyber aspoň jednoho klienta.")
+        .max(MAX_HROMADNE_ZPRAVY, `Najednou jde poslat nejvýš ${MAX_HROMADNE_ZPRAVY} zpráv.`),
+      text: vstupSchema.shape.text,
+    })
+    .safeParse({ ids: idsRaw, text: textRaw });
+  if (!vstup.success) return { ok: false, chyba: vstup.error.issues[0]!.message };
+
+  const klienti = await db.client.findMany({
+    where: {
+      AND: [
+        { id: { in: vstup.data.ids } },
+        viditelniKlienti(admin),
+        { ucet: { passwordHash: { not: null }, revokedAt: null } },
+      ],
+    },
+    select: { id: true, name: true },
+  });
+  if (klienti.length === 0) {
+    return { ok: false, chyba: "Nikdo z vybraných nemá aktivní účet v klientské části." };
+  }
+
+  let dorazilo = 0;
+  for (const klient of klienti) {
+    const doruceni = await odesliZpravu(admin.id, klient, vstup.data.text, true);
+    if (doruceni === "OZNAMENI" || doruceni === "EMAIL") dorazilo += 1;
+  }
+
+  const bezUctu = new Set(vstup.data.ids).size - klienti.length;
+  return {
+    ok: true,
+    zprava:
+      `Zpráva je uložená u ${pocet(klienti.length, "klienta", "klientů", "klientů")}` +
+      `, oznámením nebo e-mailem dorazila ${dorazilo}.` +
+      (bezUctu > 0 ? ` Bez účtu v klientské části přeskočeno: ${bezUctu}.` : ""),
+  };
 }

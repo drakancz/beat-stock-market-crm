@@ -18,6 +18,8 @@ const eslintConfig = defineConfig([
     "e2e/.stav/**",
     "e2e/vysledky/**",
     "e2e/zprava/**",
+    "e2e/vysledky-ukazka/**",
+    "e2e/zprava-ukazka/**",
   ]),
 ]);
 

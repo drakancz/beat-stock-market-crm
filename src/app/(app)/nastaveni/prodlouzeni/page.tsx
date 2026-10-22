@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CalendarClock, CircleAlert, ListChecks } from "lucide-react";
+import { BellRing, ListChecks, UserRoundX } from "lucide-react";
 
 import { PoznamkaPodCarou } from "@/components/poznamka-pod-carou";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { db } from "@/lib/db";
 import { formatDatum } from "@/lib/format";
@@ -13,18 +12,23 @@ import { posunDne } from "@/lib/obdobi";
 import { dnesniZacatek } from "@/lib/platnost";
 import { requireAdmin } from "@/lib/session";
 
-import { FormularProdlouzeni } from "./formular";
+import { FormularNechodi } from "./formular-nechodi";
+import { FormularPripominekPlatby } from "./formular-platby";
 
 export const metadata: Metadata = { title: "Prodloužení" };
 
 export const dynamic = "force-dynamic";
 
+/** Kolik dní dopředu ukazuje přehled „Končí v nejbližších …“. */
+const DNI_PREDEM = 14;
+
 /**
  * Nastavení → Prodloužení (Jakub, 24. 9. 2026).
  *
  * **Vidí i mění jen administrátor** (zábrana i v rámu `nastaveni/layout.tsx`).
- * Kdo dostává úkol „zavolat kvůli prodloužení" a kolik dní před koncem
- * platnosti. Samotné zakládání úkolů je v `src/lib/platnost.ts`.
+ * Připomínky nezaplacené objednávky, hranice „Platí, ale nechodí“ a přehled,
+ * komu brzy končí členství. Úkol „zavolat kvůli prodloužení“ zanikl
+ * 20. 10. 2026 (Jakub).
  */
 export default async function ProdlouzeniPage() {
   await requireAdmin();
@@ -32,61 +36,60 @@ export default async function ProdlouzeniPage() {
   const nastaveni = await nactiNastaveni();
   const dnes = dnesniZacatek();
 
-  const [lide, konci] = await Promise.all([
-    db.user.findMany({
-      where: { active: true, deletedAt: null },
-      select: { id: true, name: true, email: true },
-      orderBy: { name: "asc" },
-    }),
-    // Přehled, co končí v nastavené lhůtě — ať je vidět, kolik úkolů vznikne.
-    db.productValidity.findMany({
-      where: {
-        validUntil: { gte: dnes, lte: posunDne(dnes, nastaveni.renewalLeadDays) },
-        client: { deletedAt: null },
-      },
-      orderBy: { validUntil: "asc" },
-      select: {
-        id: true,
-        validUntil: true,
-        client: { select: { id: true, name: true } },
-        product: { select: { name: true } },
-      },
-    }),
-  ]);
-
-  const resitel = lide.find((clovek) => clovek.id === nastaveni.renewalUserId) ?? null;
+  // Přehled, komu brzy končí členství.
+  const konci = await db.productValidity.findMany({
+    where: {
+      validUntil: { gte: dnes, lte: posunDne(dnes, DNI_PREDEM) },
+      client: { deletedAt: null },
+    },
+    orderBy: { validUntil: "asc" },
+    select: {
+      id: true,
+      validUntil: true,
+      client: { select: { id: true, name: true } },
+      product: { select: { name: true } },
+    },
+  });
 
   return (
     <>
+      {/* Připomínka nezaplacené objednávky (Fáze 5A, Jakub 11. 10. 2026). */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <CalendarClock className="text-muted-foreground size-4 shrink-0" aria-hidden />
-            Úkoly na prodloužení členství
+            <BellRing className="text-muted-foreground size-4 shrink-0" aria-hidden />
+            Připomínka nezaplacené objednávky
           </CardTitle>
           <CardDescription>
-            Když klientovi za méně dní, než je tady nastavené, skončí platnost produktu, dostane
-            vybraný člověk v Mém dni na Dashboardu úkol „zavolat kvůli prodloužení“ s termínem v den
-            konce. Když klient mezitím prodlouží, úkol se sám odškrtne.
+            Klient, jehož objednávka je pořád Nová nebo Nezaplaceno, dostane ráno připomínku —
+            oznámením na telefon, jinak e-mailem. Jde jen klientům s účtem v klientské části. Kdy
+            připomínka odešla, je vidět u objednávky.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {!resitel && (
-            <Alert variant="destructive">
-              <CircleAlert />
-              <AlertTitle>Nikdo vybraný není — úkoly nevznikají</AlertTitle>
-              <AlertDescription>
-                {nastaveni.renewalUserId
-                  ? "Vybraný člověk už v týmu není nebo nemá přístup. Vyber někoho jiného."
-                  : "Vyber člověka, který prodloužení řeší."}
-              </AlertDescription>
-            </Alert>
-          )}
-          <FormularProdlouzeni
-            lide={lide}
-            resitelId={resitel?.id ?? null}
-            dniPredem={nastaveni.renewalLeadDays}
+        <CardContent>
+          <FormularPripominekPlatby
+            zapnuto={nastaveni.paymentRemindersEnabled}
+            prvniDnu={nastaveni.paymentReminderFirstDays}
+            druhaDnu={nastaveni.paymentReminderSecondDays}
           />
+        </CardContent>
+      </Card>
+
+      {/* Platí, ale nechodí (Fáze 5B, Jakub 15. 10. 2026). */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <UserRoundX className="text-muted-foreground size-4 shrink-0" aria-hidden />
+            Platí, ale nechodí
+          </CardTitle>
+          <CardDescription>
+            Člen, kterému běží členství a který tolik dní nebyl v klientské části ani nezaplatil,
+            dostane v seznamu klientů značku Nechodí a jde vyfiltrovat. Značku vidí každý
+            přihlášený. Kupci kurzu bez členství ji nedostávají.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <FormularNechodi dni={nastaveni.inactiveMemberDays} />
         </CardContent>
       </Card>
 
@@ -94,12 +97,12 @@ export default async function ProdlouzeniPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <ListChecks className="text-muted-foreground size-4 shrink-0" aria-hidden />
-            Končí v nejbližších {pocet(nastaveni.renewalLeadDays, "dni", "dnech", "dnech")}
+            Končí v nejbližších {pocet(DNI_PREDEM, "dni", "dnech", "dnech")}
           </CardTitle>
           <CardDescription>
             {konci.length === 0
               ? "Nikomu nic nekončí."
-              : `Platností, ke kterým vznikne úkol: ${konci.length}.`}
+              : `Končících platností: ${konci.length}. Klient dostane upozornění týden předem a v den konce.`}
           </CardDescription>
         </CardHeader>
         {konci.length > 0 && (
@@ -130,10 +133,7 @@ export default async function ProdlouzeniPage() {
       </Card>
 
       <PoznamkaPodCarou>
-        Úkoly se zakládají ve chvíli, kdy někdo otevře Dashboard — jsou vidět jen tam, takže se tím
-        neopozdí. Ke každému konci vznikne jen jeden úkol; kdo ho smaže, další nedostane, dokud se
-        konec nezmění. Délku platnosti produktů nastavíš v Produktech, konec u jednoho klienta na
-        jeho kartě.
+        Délku platnosti produktů nastavíš v Produktech, konec u jednoho klienta na jeho kartě.
       </PoznamkaPodCarou>
     </>
   );

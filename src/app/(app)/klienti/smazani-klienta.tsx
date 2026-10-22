@@ -21,7 +21,7 @@ import { dejKlientaDoKose } from "./actions";
 /**
  * Smazání klienta — jen pro administrátora.
  *
- * Klient nese souhlasy, hovory i historii, takže to není rutina pro
+ * Klient nese souhlasy, objednávky i historii, takže to není rutina pro
  * obchodníka; kdo tlačítko nevidí, tomu by ho serverová akce stejně
  * odmítla.
  *
@@ -46,15 +46,15 @@ export function SmazaniKlienta({ klient }: { klient: { id: string; name: string 
           <DialogHeader>
             <DialogTitle>Smazat klienta</DialogTitle>
             <DialogDescription>
-              Opravdu smazat {klient.name}? Zmizí ze seznamu klientů, z portfolií i ze statistik.{" "}
+              Opravdu smazat {klient.name}? Zmizí ze seznamu klientů i ze statistik.{" "}
               <strong>Tuhle akci nelze vzít zpět.</strong>
             </DialogDescription>
           </DialogHeader>
 
           <Alert className="my-4">
             <AlertDescription className="text-xs leading-relaxed">
-              Zmizí i jeho hovory, úkoly a portfolia. Pokud si jen nepřejete, aby ho někdo
-              kontaktoval, změňte mu radši stav na <strong>Neaktivní</strong>.
+              Zmizí i jeho úkoly. Pokud si jen nepřejete, aby ho někdo kontaktoval, změňte mu radši
+              stav na <strong>Neaktivní</strong>.
             </AlertDescription>
           </Alert>
 

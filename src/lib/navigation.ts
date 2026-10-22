@@ -1,16 +1,17 @@
 import {
   BarChart3,
-  BriefcaseBusiness,
+  Bot,
+  CalendarCheck,
   GraduationCap,
   ReceiptText,
   Package,
-  PhoneCall,
   Plug,
   Send,
   Settings,
   Trash2,
   UserCog,
   Users,
+  Workflow,
   type LucideIcon,
 } from "lucide-react";
 
@@ -57,20 +58,13 @@ export const navigation: NavItem[] = [
     icon: ReceiptText,
     description: "Co si klienti koupili a jestli zaplatili.",
   },
-  // Portfolia, Brokeři a Hovory Jakub 24. 9. 2026 schoval z menu. Stránky
-  // zůstávají na svých adresách a fungují dál, jen na ně nevede odkaz.
-  {
-    href: "/portfolia",
-    label: "Portfolia",
-    icon: BriefcaseBusiness,
-    description: "Pozice u brokerů, zisk a ztráta.",
-    skrytaVMenu: true,
-  },
+  // Brokery Jakub 24. 9. 2026 schoval z menu, stránka žije na své adrese.
+  // Portfolia (20. 10. 2026) a Hovory (20. 10. 2026) z CRM zmizely úplně.
   {
     href: "/brokeri",
     label: "Brokeři",
     icon: Plug,
-    description: "Seznam brokerů a portfolia klientů u nich.",
+    description: "Katalog brokerů.",
     skrytaVMenu: true,
   },
   {
@@ -87,11 +81,27 @@ export const navigation: NavItem[] = [
     description: "Kurzy a lekce, členská sekce a webináře pro klienty.",
   },
   {
-    href: "/hovory",
-    label: "Hovory",
-    icon: PhoneCall,
-    description: "Telefonáty s klienty — kdo, s kým, ke které objednávce.",
-    skrytaVMenu: true,
+    // Fáze 5B (Jakub, 19. 10. 2026): vidí každý přihlášený, termíny vypisuje
+    // a rezervace ruší jen administrátor.
+    href: "/konzultace",
+    label: "Konzultace",
+    icon: CalendarCheck,
+    description: "Volné termíny konzultací a kdo si je zarezervoval.",
+  },
+  {
+    // Fáze 5D (Jakub, 18. 10. 2026): vidí každý přihlášený, mění administrátor.
+    href: "/pravidla",
+    label: "Pravidla",
+    icon: Workflow,
+    description: "Když se stane tohle, CRM samo udělá tamto.",
+  },
+  {
+    // Krok 4 (Jakub, 10. 10. 2026): jen administrátor — vidět i používat.
+    href: "/asistent",
+    label: "Asistent AI",
+    icon: Bot,
+    description: "Otázky na data v CRM. Klienti jdou k AI jen pod přezdívkou.",
+    jenAdmin: true,
   },
   {
     href: "/sprava",

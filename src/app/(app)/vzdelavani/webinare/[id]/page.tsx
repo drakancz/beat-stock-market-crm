@@ -41,6 +41,11 @@ export default async function WebinarPage({ params }: PageProps<"/vzdelavani/web
       joinUrl: true,
       audience: true,
       courseId: true,
+      remindersEnabled: true,
+      remindedDayAt: true,
+      remindedDayCount: true,
+      remindedHourAt: true,
+      remindedHourCount: true,
       course: { select: { title: true } },
       ucast: {
         orderBy: { createdAt: "asc" },
@@ -105,6 +110,20 @@ export default async function WebinarPage({ params }: PageProps<"/vzdelavani/web
           {webinar.description && (
             <p className="max-w-2xl text-sm whitespace-pre-line">{webinar.description}</p>
           )}
+          {/* Připomínka klientům (5C, 11. 10. 2026) — vidí každý přihlášený. */}
+          <p className="text-muted-foreground text-xs">
+            Připomínka:{" "}
+            {!webinar.remindersEnabled
+              ? "vypnutá"
+              : [
+                  webinar.remindedDayAt
+                    ? `den předem ${formatDatumCas(webinar.remindedDayAt)}, doručeno ${pocet(webinar.remindedDayCount ?? 0, "klientovi", "klientům", "klientům")}`
+                    : "den předem zatím ne",
+                  webinar.remindedHourAt
+                    ? `hodinu předem ${formatDatumCas(webinar.remindedHourAt)}, doručeno ${pocet(webinar.remindedHourCount ?? 0, "klientovi", "klientům", "klientům")}`
+                    : "hodinu předem zatím ne",
+                ].join(" · ")}
+          </p>
         </div>
         {jeAdmin && (
           <div className="flex flex-wrap gap-2">
@@ -119,6 +138,7 @@ export default async function WebinarPage({ params }: PageProps<"/vzdelavani/web
                 joinUrl: webinar.joinUrl ?? "",
                 audience: webinar.audience,
                 courseId: webinar.courseId ?? "",
+                remindersEnabled: webinar.remindersEnabled,
               }}
             />
             <SmazaniObsahu

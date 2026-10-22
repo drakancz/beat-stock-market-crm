@@ -21,6 +21,23 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
 
   /*
+   * PDF certifikátu (Fáze 5C, 11. 10. 2026). `pdfkit` si čte vlastní
+   * datové soubory přes `__dirname`, což po zabalení do serverového
+   * balíku přestane sedět — proto běží z `node_modules` tak, jak je.
+   * Písma certifikátu čte `certifikat-pdf.ts` z disku; standalone
+   * sestavení je samo nepřibalí, tak se mu musí říct.
+   */
+  serverExternalPackages: ["pdfkit"],
+  outputFileTracingIncludes: {
+    "/ucet/certifikat/*": ["src/lib/vzdelavani/pisma/*.ttf"],
+    // Faktury a dobropisy v PDF (19. 10. 2026) — stejná písma.
+    "/ucet/faktura/*": ["src/lib/vzdelavani/pisma/*.ttf"],
+    "/objednavky/faktura/*": ["src/lib/vzdelavani/pisma/*.ttf"],
+    // Moje údaje v PDF (21. 10. 2026).
+    "/ucet/moje-udaje.pdf": ["src/lib/vzdelavani/pisma/*.ttf"],
+  },
+
+  /*
    * Bezpečnostní hlavičky pro všechny odpovědi (bezpečnostní audit,
    * Jakub, 16. 9. 2026).
    *
@@ -108,7 +125,7 @@ const nextConfig: NextConfig = {
  *   neposílá.
  *
  * Volby `disableLogger` a `reactComponentAnnotation` tu schválně nejsou:
- * v Sentry 10 jsou zastaralé a s Turbopackem, který Next.js 16 používá,
+ * v Sentry 10 byly zastaralé a s Turbopackem, který Next.js 16 používá,
  * stejně nefungují.
  */
 export default withSentryConfig(nextConfig, {
@@ -116,7 +133,7 @@ export default withSentryConfig(nextConfig, {
   telemetry: false,
 
   // Kam mapy patří. Účet je v EU, proto `sentryUrl` — bez něj by se
-  // sentry-cli hlásil na americký server a odeslání by selhalo.
+  // nástroj na odeslání hlásil na americký server a odeslání by selhalo.
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
   sentryUrl: process.env.SENTRY_URL,
@@ -130,6 +147,6 @@ export default withSentryConfig(nextConfig, {
     // a přes něj k návštěvníkům.
     deleteSourcemapsAfterUpload: true,
   },
-
-  widenClientFileUpload: false,
+  // `widenClientFileUpload` Sentry 11 zrušilo; posílají se jen mapy
+  // vlastního kódu, jako dřív s `false`.
 });

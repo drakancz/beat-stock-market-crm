@@ -1,6 +1,6 @@
 import type { ProductKind, ProgramAccess, OrderStatus } from "@/generated/prisma/enums";
 import { db } from "@/lib/db";
-import { cenaPolozkySDph } from "@/lib/dph";
+import { cenaPolozkySDph, sDph } from "@/lib/dph";
 import { dnesniZacatek } from "@/lib/platnost";
 import { maPlatnost } from "@/lib/types";
 
@@ -23,7 +23,12 @@ export interface ObjednavkaKlienta {
   createdAt: Date;
   paidAt: Date | null;
   polozky: { name: string; quantity: number; cenaSDph: number }[];
+  /** Už po slevě. */
   celkemSDph: number;
+  /** Slevový kód (Fáze 5A, 14. 10. 2026) a kolik s DPH ubral. */
+  sleva: { kod: string; castka: number } | null;
+  /** Faktury a dobropisy k objednávce (19. 10. 2026). */
+  doklady: { id: string; number: string; dobropis: boolean }[];
 }
 
 export interface ProduktKlienta {
@@ -33,6 +38,10 @@ export interface ProduktKlienta {
   /** `null` = produkt bez platnosti (kurz napořád, konzultace jednorázově). */
   do: Date | null;
   skoncilo: boolean;
+  /** Celé pražské dny do konce (0 = končí dnes); `null` bez konce nebo po něm. */
+  zbyvaDni: number | null;
+  /** Stránka produktu z ceníku (jen `https`) — odkaz Prodloužit. */
+  url: string | null;
 }
 
 export interface PrehledKlienta {
@@ -69,17 +78,22 @@ export async function nactiPrehledKlienta(clientId: string): Promise<PrehledKlie
         currency: true,
         createdAt: true,
         paidAt: true,
+        discountCode: { select: { code: true } },
+        // Faktury a dobropisy (19. 10. 2026) — klient stáhne své.
+        faktury: { orderBy: { issuedAt: "asc" }, select: { id: true, number: true, kind: true } },
         items: {
           orderBy: { product: { name: "asc" } },
           select: {
             quantity: true,
             netPrice: true,
             vatPercent: true,
+            listNetPrice: true,
             product: {
               select: {
                 id: true,
                 name: true,
                 kind: true,
+                url: true,
                 netPrice: true,
                 vatRate: { select: { rate: true } },
               },
@@ -111,7 +125,33 @@ export async function nactiPrehledKlienta(clientId: string): Promise<PrehledKlie
       createdAt: objednavka.createdAt,
       paidAt: objednavka.paidAt,
       polozky,
+      doklady: objednavka.faktury.map((f) => ({
+        id: f.id,
+        number: f.number,
+        dobropis: f.kind === "DOBROPIS",
+      })),
       celkemSDph: polozky.reduce((soucet, p) => soucet + p.quantity * p.cenaSDph, 0),
+      sleva: objednavka.discountCode
+        ? {
+            kod: objednavka.discountCode.code,
+            castka:
+              Math.round(
+                objednavka.items.reduce(
+                  (soucet, polozka) =>
+                    polozka.listNetPrice
+                      ? soucet +
+                        polozka.quantity *
+                          (sDph(
+                            polozka.listNetPrice.toNumber(),
+                            polozka.vatPercent?.toNumber() ?? 0,
+                          ) -
+                            cenaPolozkySDph(polozka))
+                      : soucet,
+                  0,
+                ) * 100,
+              ) / 100,
+          }
+        : null,
     };
   });
 
@@ -135,6 +175,13 @@ export async function nactiPrehledKlienta(clientId: string): Promise<PrehledKlie
         kind: product.kind,
         do: konec,
         skoncilo: konec !== null && konec.getTime() < dnes,
+        // `validUntil` je začátek posledního platného dne; zaokrouhlení
+        // spolkne hodinu navíc nebo méně při změně času.
+        zbyvaDni:
+          konec !== null && konec.getTime() >= dnes
+            ? Math.round((konec.getTime() - dnes) / 86_400_000)
+            : null,
+        url: product.url,
       });
     }
   }

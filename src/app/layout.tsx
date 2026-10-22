@@ -45,7 +45,7 @@ export const metadata: Metadata = {
     template: "%s · CRM Beat Stock Market",
   },
   description:
-    "Interní systém Beat Stock Market: klienti, hovory, úkoly, portfolia, produkty a statistiky na jednom místě.",
+    "Interní systém Beat Stock Market: klienti, objednávky, úkoly, produkty a statistiky na jednom místě.",
   /*
    * CRM jako aplikace na ploše telefonu (krok 3A, 4. 10. 2026). Klientská
    * část si v `src/app/ucet/layout.tsx` nastavuje vlastní manifest.

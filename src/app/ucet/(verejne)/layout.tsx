@@ -14,7 +14,10 @@ export default function VerejneLayout({ children }: { children: React.ReactNode 
       <p className="text-muted-foreground max-w-sm text-center text-xs text-balance">
         Účet do klientské části vám zřídíme po objednávce. Veřejná registrace neexistuje.
       </p>
-      <nav aria-label="Dokumenty" className="text-muted-foreground flex gap-4 text-xs">
+      <nav
+        aria-label="Dokumenty"
+        className="text-muted-foreground flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs"
+      >
         <Link
           href="/ucet/zasady"
           className="hover:text-foreground underline-offset-4 hover:underline"
@@ -26,6 +29,12 @@ export default function VerejneLayout({ children }: { children: React.ReactNode 
           className="hover:text-foreground underline-offset-4 hover:underline"
         >
           Podmínky
+        </Link>
+        <Link
+          href="/ucet/obchodni-podminky"
+          className="hover:text-foreground underline-offset-4 hover:underline"
+        >
+          Obchodní podmínky
         </Link>
       </nav>
     </div>

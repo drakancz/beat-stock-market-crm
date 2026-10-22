@@ -9,7 +9,7 @@ import { nactiNastaveni } from "@/lib/nastaveni";
  */
 
 /** Den, od kterého texty platí. Při změně textu ho posuň. */
-export const PLATNE_OD = "4. 10. 2026";
+export const PLATNE_OD = "20. 10. 2026";
 
 export async function udajeFirmy() {
   const nastaveni = await nactiNastaveni();
@@ -44,11 +44,18 @@ export function Kontakt({ email }: { email: string | null }) {
   );
 }
 
-export function Nadpis({ children }: { children: React.ReactNode }) {
+export function Nadpis({
+  children,
+  platneOd = PLATNE_OD,
+}: {
+  children: React.ReactNode;
+  /** Obchodní podmínky mají vlastní znění (`OBCHODNI_PODMINKY_OD`). */
+  platneOd?: string;
+}) {
   return (
     <header className="mb-6 space-y-1">
       <h1 className="text-2xl font-semibold">{children}</h1>
-      <p className="text-muted-foreground text-sm">Platné od {PLATNE_OD}</p>
+      <p className="text-muted-foreground text-sm">Platné od {platneOd}</p>
     </header>
   );
 }

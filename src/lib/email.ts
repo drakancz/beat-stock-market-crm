@@ -16,6 +16,7 @@ import {
   type Sablona,
 } from "@/lib/email-sablony";
 import { nactiNastaveni } from "@/lib/nastaveni";
+import { jeUkazka } from "@/lib/ukazka";
 
 /**
  * Odesílání e-mailů.
@@ -66,6 +67,10 @@ interface NastaveniSmtp {
 type Nastaveni = NastaveniSes | NastaveniSmtp | null;
 
 function nactiNastaveniPosty(): Nastaveni {
+  // Ukázka nepošle ven nic (src/lib/ukazka.ts) — chová se jako server bez
+  // pošty, takže rozhraní řekne, že zpráva neodešla, a odkaz vydá rovnou.
+  if (jeUkazka()) return null;
+
   const odesilatel = process.env.MAIL_FROM;
   if (!odesilatel) return null;
 
@@ -207,6 +212,8 @@ async function posli(
 ): Promise<VysledekOdeslani> {
   const nastaveni = nactiNastaveniPosty();
   if (!nastaveni) {
+    // V ukázce to chyba není, sekce Chyby by se jen plnila.
+    if (jeUkazka()) return { odeslano: false, duvod: "nenastaveno" };
     await zapisChybu({
       druh,
       kod: "nenastaveno",

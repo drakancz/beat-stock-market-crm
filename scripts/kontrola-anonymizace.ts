@@ -1,6 +1,11 @@
 import { bezOsobnichUdaju } from "../src/lib/anonymizace";
 import { textOdpovedi } from "../src/lib/mcp/vystup";
-import { ocistiDrobek, ocistiUdalost } from "../src/lib/sentry/nastaveni";
+import {
+  ocistiDrobek,
+  ocistiUdalost,
+  ocistiUsek,
+  spolecneNastaveni,
+} from "../src/lib/sentry/nastaveni";
 
 /**
  * Kontrola, že z hlášení o chybě neodejdou osobní údaje.
@@ -75,6 +80,58 @@ if (udalost?.user?.id !== "cmu2s0vqx0006") {
 const drobek = ocistiDrobek({ message: "Otevřeno", data: { url: "/klienti?hledat=Kr%C3%A1l" } });
 if (JSON.stringify(drobek).includes("hledat")) {
   console.error("CHYBA stopa kroků: v adrese zůstaly parametry s hledaným jménem.");
+  chyb++;
+}
+
+// Měření výkonu (Sentry 11 posílá úseky mimo `beforeSend`).
+const usek = ocistiUsek({
+  trace_id: "t",
+  span_id: "s",
+  name: "GET /klienti?hledat=Nov%C3%A1k",
+  start_timestamp: 0,
+  status: "ok",
+  is_segment: true,
+  attributes: {
+    "url.full": "https://crm.test/klienti?hledat=Nov%C3%A1k",
+    "url.query": "hledat=Nov%C3%A1k",
+    "http.target": { value: "/klienti?hledat=Kr%C3%A1l" },
+    "db.query.summary": "SELECT clients",
+    poznamka: "Volat jan.novak@example.cz",
+  },
+} as Parameters<typeof ocistiUsek>[0]);
+const usekJakoText = JSON.stringify(usek);
+for (const zakazane of ["hledat", "jan.novak"]) {
+  if (usekJakoText.includes(zakazane)) {
+    console.error(`CHYBA měření: v úseku zůstalo „${zakazane}"\n      ${usekJakoText}`);
+    chyb++;
+  }
+}
+
+// Sběr dat v SDK musí zůstat vypnutý — od Sentry 11 je výchozí „všechno“.
+const sber = spolecneNastaveni().dataCollection as Record<string, unknown>;
+for (const [klic, hodnota] of Object.entries({
+  userInfo: false,
+  cookies: false,
+  httpHeaders: false,
+  urlQueryParams: false,
+  databaseQueryData: false,
+  stackFrameVariables: false,
+})) {
+  if (sber?.[klic] !== hodnota) {
+    console.error(`CHYBA Sentry: dataCollection.${klic} musí být ${hodnota}.`);
+    chyb++;
+  }
+}
+// Asistent AI a MCP (security.md 7, 7b): obsah dotazů a odpovědí do Sentry
+// nesmí — od Sentry 11 ho sledování MCP a Anthropicu bez tohohle posílá.
+const genAI = sber?.genAI as { inputs?: boolean; outputs?: boolean } | undefined;
+if (genAI?.inputs !== false || genAI?.outputs !== false) {
+  console.error("CHYBA Sentry: dataCollection.genAI.inputs i outputs musí být false.");
+  chyb++;
+}
+
+if (!Array.isArray(sber?.httpBodies) || sber.httpBodies.length > 0) {
+  console.error("CHYBA Sentry: dataCollection.httpBodies musí být prázdné pole.");
   chyb++;
 }
 

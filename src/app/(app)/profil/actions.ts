@@ -12,6 +12,7 @@ import { patyPad } from "@/lib/osloveni";
 import { requireViewer } from "@/lib/session";
 import { sjednotTelefon } from "@/lib/telefon";
 import { rozsifruj, zasifruj } from "@/lib/tajemstvi";
+import { jeUkazkovyTym, VYPNUTO_V_UKAZCE } from "@/lib/ukazka";
 
 /**
  * Vlastní účet: změna hesla a dvoufázové ověření.
@@ -67,6 +68,8 @@ async function overVlastniHeslo(userId: string, heslo: string): Promise<string |
 
 export async function zmenHeslo(formData: FormData): Promise<VysledekProfilu> {
   const viewer = await requireViewer({ bezDvoufazoveho: true });
+  // Heslo ukázkového účtu je veřejné — účet se nemění (src/lib/ukazka.ts).
+  if (jeUkazkovyTym(viewer.email)) return { ok: false, chyba: VYPNUTO_V_UKAZCE };
 
   const stare = hesloVstup.safeParse(formData.get("stare"));
   if (!stare.success) return { ok: false, chyba: stare.error.issues[0]!.message };
@@ -116,6 +119,8 @@ export async function zmenHeslo(formData: FormData): Promise<VysledekProfilu> {
 
 export async function zapniDvoufazove(formData: FormData): Promise<VysledekProfilu> {
   const viewer = await requireViewer({ bezDvoufazoveho: true });
+  // Heslo ukázkového účtu je veřejné — účet se nemění (src/lib/ukazka.ts).
+  if (jeUkazkovyTym(viewer.email)) return { ok: false, chyba: VYPNUTO_V_UKAZCE };
 
   const heslo = hesloVstup.safeParse(formData.get("heslo"));
   if (!heslo.success) return { ok: false, chyba: heslo.error.issues[0]!.message };
@@ -172,6 +177,8 @@ export async function zapniDvoufazove(formData: FormData): Promise<VysledekProfi
 /** Potvrzení prvním kódem. Teprve tím se dvoufázové ověření zapne. */
 export async function potvrdDvoufazove(formData: FormData): Promise<VysledekProfilu> {
   const viewer = await requireViewer({ bezDvoufazoveho: true });
+  // Heslo ukázkového účtu je veřejné — účet se nemění (src/lib/ukazka.ts).
+  if (jeUkazkovyTym(viewer.email)) return { ok: false, chyba: VYPNUTO_V_UKAZCE };
 
   const kod = kodVstup.safeParse(formData.get("kod"));
   if (!kod.success) return { ok: false, chyba: kod.error.issues[0]!.message };
@@ -215,6 +222,8 @@ export async function potvrdDvoufazove(formData: FormData): Promise<VysledekProf
 
 export async function vypniDvoufazove(formData: FormData): Promise<VysledekProfilu> {
   const viewer = await requireViewer({ bezDvoufazoveho: true });
+  // Heslo ukázkového účtu je veřejné — účet se nemění (src/lib/ukazka.ts).
+  if (jeUkazkovyTym(viewer.email)) return { ok: false, chyba: VYPNUTO_V_UKAZCE };
 
   const heslo = hesloVstup.safeParse(formData.get("heslo"));
   if (!heslo.success) return { ok: false, chyba: heslo.error.issues[0]!.message };
@@ -288,6 +297,8 @@ export async function ulozOsobniUdaje(
   formData: FormData,
 ): Promise<VysledekProfilu> {
   const viewer = await requireViewer({ bezDvoufazoveho: true });
+  // Heslo ukázkového účtu je veřejné — účet se nemění (src/lib/ukazka.ts).
+  if (jeUkazkovyTym(viewer.email)) return { ok: false, chyba: VYPNUTO_V_UKAZCE };
 
   const userId = z.string().trim().min(1).max(64).safeParse(userIdRaw);
   if (!userId.success) return { ok: false, chyba: "Takový uživatel neexistuje." };

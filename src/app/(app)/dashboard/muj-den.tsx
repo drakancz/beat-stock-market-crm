@@ -77,7 +77,7 @@ export function MujDen({
                 : "Dnes není pracovní den"}
           </AlertTitle>
           <AlertDescription>
-            Systém funguje normálně, jen s tím počítej u termínů a hovorů s klienty.
+            Systém funguje normálně, jen s tím počítej u termínů s klienty.
           </AlertDescription>
         </Alert>
       )}

@@ -3,9 +3,8 @@ import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { cenaPolozkyBezDph } from "@/lib/dph";
 import { requireAdmin } from "@/lib/session";
-import { formatDatumCas, formatMoney } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 import { pocet } from "@/lib/mnozne";
-import { OUTCOME_LABEL } from "@/lib/types";
 
 import { SeznamSmazanych, type RadekKose } from "./seznam-smazanych";
 
@@ -16,8 +15,8 @@ export const dynamic = "force-dynamic";
 /**
  * Společný koš — jen pro administrátora.
  *
- * Sbíhá se sem všechno odložené: klienti, objednávky, hovory, portfolia,
- * produkty, brokeři i účty.
+ * Sbíhá se sem všechno odložené: klienti, objednávky,
+ * produkty, slevové kódy, brokeři i účty.
  * Záznam se nikde jinde nezobrazuje, ale v databázi zůstává i s historií,
  * takže se dá vrátit přesně tam, odkud zmizel.
  *
@@ -27,116 +26,112 @@ export const dynamic = "force-dynamic";
 export default async function SmazanePage() {
   await requireAdmin();
 
-  const [klienti, objednavky, hovory, portfolia, produkty, brokeri, uzivatele] = await Promise.all([
-    db.client.findMany({
-      where: { deletedAt: { not: null } },
-      orderBy: { deletedAt: "desc" },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        phone: true,
-        deletedAt: true,
-        mergedInto: { select: { name: true } },
-        _count: {
-          select: {
-            calls: true,
-            tasks: true,
-            portfolios: true,
-            activities: true,
-            orders: true,
-            zpravy: true,
-            // Účast na webinářích (3C) je taky historie.
-            ucastNaWebinarich: true,
+  const [klienti, objednavky, produkty, brokeri, uzivatele, kody, doporucitele] = await Promise.all(
+    [
+      db.client.findMany({
+        where: { deletedAt: { not: null } },
+        orderBy: { deletedAt: "desc" },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          deletedAt: true,
+          mergedInto: { select: { name: true } },
+          _count: {
+            select: {
+              tasks: true,
+              activities: true,
+              orders: true,
+              zpravy: true,
+              // Účast na webinářích (3C) je taky historie.
+              ucastNaWebinarich: true,
+              // Rezervace konzultací (5B, 19. 10. 2026) taky.
+              rezervace: true,
+            },
           },
         },
-      },
-    }),
-    db.order.findMany({
-      where: { deletedAt: { not: null } },
-      orderBy: { deletedAt: "desc" },
-      select: {
-        id: true,
-        number: true,
-        currency: true,
-        deletedAt: true,
-        client: { select: { name: true } },
-        items: {
-          select: {
-            quantity: true,
-            netPrice: true,
-            vatPercent: true,
-            product: { select: { netPrice: true } },
+      }),
+      db.order.findMany({
+        where: { deletedAt: { not: null } },
+        orderBy: { deletedAt: "desc" },
+        select: {
+          id: true,
+          number: true,
+          currency: true,
+          deletedAt: true,
+          client: { select: { name: true } },
+          items: {
+            select: {
+              quantity: true,
+              netPrice: true,
+              vatPercent: true,
+              product: { select: { netPrice: true } },
+            },
           },
         },
-      },
-    }),
-    db.call.findMany({
-      where: { deletedAt: { not: null } },
-      orderBy: { deletedAt: "desc" },
-      select: {
-        id: true,
-        at: true,
-        durationMin: true,
-        outcome: true,
-        deletedAt: true,
-        client: { select: { name: true } },
-        user: { select: { name: true } },
-        order: { select: { number: true } },
-      },
-    }),
-    db.portfolio.findMany({
-      where: { deletedAt: { not: null } },
-      orderBy: { deletedAt: "desc" },
-      select: {
-        id: true,
-        currency: true,
-        deletedAt: true,
-        client: { select: { name: true } },
-        broker: { select: { name: true } },
-        _count: { select: { positions: true } },
-      },
-    }),
-    db.product.findMany({
-      where: { deletedAt: { not: null } },
-      orderBy: { deletedAt: "desc" },
-      select: {
-        id: true,
-        name: true,
-        deletedAt: true,
-        _count: { select: { orders: true, calls: true, platnosti: true, kurzy: true } },
-      },
-    }),
-    db.broker.findMany({
-      where: { deletedAt: { not: null } },
-      orderBy: { deletedAt: "desc" },
-      select: {
-        id: true,
-        name: true,
-        deletedAt: true,
-        _count: { select: { portfolios: true } },
-      },
-    }),
-    db.user.findMany({
-      where: { deletedAt: { not: null } },
-      orderBy: { deletedAt: "desc" },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        deletedAt: true,
-        _count: {
-          select: { calls: true, tasks: true, auditLog: true, events: true },
+      }),
+      db.product.findMany({
+        where: { deletedAt: { not: null } },
+        orderBy: { deletedAt: "desc" },
+        select: {
+          id: true,
+          name: true,
+          deletedAt: true,
+          _count: { select: { orders: true, platnosti: true, kurzy: true } },
         },
-      },
-    }),
-  ]);
+      }),
+      db.broker.findMany({
+        where: { deletedAt: { not: null } },
+        orderBy: { deletedAt: "desc" },
+        select: {
+          id: true,
+          name: true,
+          deletedAt: true,
+        },
+      }),
+      db.user.findMany({
+        where: { deletedAt: { not: null } },
+        orderBy: { deletedAt: "desc" },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          deletedAt: true,
+          _count: {
+            select: { tasks: true, auditLog: true, events: true },
+          },
+        },
+      }),
+      db.discountCode.findMany({
+        where: { deletedAt: { not: null } },
+        orderBy: { deletedAt: "desc" },
+        select: {
+          id: true,
+          code: true,
+          note: true,
+          deletedAt: true,
+          _count: { select: { objednavky: true } },
+        },
+      }),
+      db.referrer.findMany({
+        where: { deletedAt: { not: null } },
+        orderBy: { deletedAt: "desc" },
+        select: {
+          id: true,
+          name: true,
+          kind: true,
+          deletedAt: true,
+          _count: { select: { kody: true, privedeni: true, objednavky: true, odmeny: true } },
+        },
+      }),
+    ],
+  );
 
   const radky: RadekKose[] = [
     ...klienti.map((klient) => {
-      const { calls, tasks, portfolios, activities, orders, zpravy, ucastNaWebinarich } =
-        klient._count;
+      const { tasks, activities, orders, zpravy, ucastNaWebinarich, rezervace } = klient._count;
       return {
         druh: "klient" as const,
         id: klient.id,
@@ -147,16 +142,15 @@ export default async function SmazanePage() {
         smazano: klient.deletedAt!.toISOString(),
         maHistorii:
           klient.mergedInto !== null ||
-          calls > 0 ||
           tasks > 0 ||
-          portfolios > 0 ||
           activities > 0 ||
           orders > 0 ||
           zpravy > 0 ||
-          ucastNaWebinarich > 0,
+          ucastNaWebinarich > 0 ||
+          rezervace > 0,
         procNejde: klient.mergedInto
           ? "Sloučená karta — podle ní se objednávky zapisují ke správnému klientovi."
-          : "Má v systému objednávky, hovory, úkoly, portfolia, zprávy nebo účast na webinářích.",
+          : "Má v systému objednávky, úkoly, zprávy, účast na webinářích nebo rezervace konzultací.",
       };
     }),
     ...objednavky.map((objednavka) => ({
@@ -178,35 +172,8 @@ export default async function SmazanePage() {
       maHistorii: false,
       procNejde: "",
     })),
-    ...hovory.map((hovor) => ({
-      druh: "hovor" as const,
-      id: hovor.id,
-      nazev: `${OUTCOME_LABEL[hovor.outcome]} — ${hovor.client.name}`,
-      popis: [
-        formatDatumCas(hovor.at),
-        `${hovor.durationMin} min`,
-        `zapsal ${hovor.user.name}`,
-        hovor.order ? `objednávka ${hovor.order.number}` : null,
-      ]
-        .filter(Boolean)
-        .join(", "),
-      smazano: hovor.deletedAt!.toISOString(),
-      // Na hovoru nic nevisí — smazat nadobro jde vždycky. Stopa po něm
-      // zůstane v auditním logu.
-      maHistorii: false,
-      procNejde: "",
-    })),
-    ...portfolia.map((portfolio) => ({
-      druh: "portfolio" as const,
-      id: portfolio.id,
-      nazev: `${portfolio.client.name} — ${portfolio.broker.name}`,
-      popis: `${portfolio.currency}, ${pocet(portfolio._count.positions, "pozice", "pozice", "pozic")}`,
-      smazano: portfolio.deletedAt!.toISOString(),
-      maHistorii: false,
-      procNejde: "",
-    })),
     ...produkty.map((produkt) => {
-      const { orders, calls, platnosti, kurzy } = produkt._count;
+      const { orders, platnosti, kurzy } = produkt._count;
       return {
         druh: "produkt" as const,
         id: produkt.id,
@@ -216,24 +183,55 @@ export default async function SmazanePage() {
             ? `v ${pocet(orders, "objednávce", "objednávkách", "objednávkách")}`
             : "nikdo ho neobjednal",
         smazano: produkt.deletedAt!.toISOString(),
-        // Objednávky, platnost i hovory na produkt odkazují — kdyby zmizel,
+        // Objednávky a platnost na produkt odkazují — kdyby zmizel,
         // z historie by se ztratilo, co si klient koupil.
-        maHistorii: orders > 0 || calls > 0 || platnosti > 0 || kurzy > 0,
-        procNejde: "Je v objednávkách, platnosti členství, u hovoru nebo má obsah kurzu.",
+        maHistorii: orders > 0 || platnosti > 0 || kurzy > 0,
+        procNejde: "Je v objednávkách, platnosti členství nebo má obsah kurzu.",
+      };
+    }),
+    ...kody.map((kod) => ({
+      druh: "slevovy-kod" as const,
+      id: kod.id,
+      nazev: kod.code,
+      popis: [
+        kod.note,
+        kod._count.objednavky > 0
+          ? `v ${pocet(kod._count.objednavky, "objednávce", "objednávkách", "objednávkách")}`
+          : "nikdo ho nepoužil",
+      ]
+        .filter(Boolean)
+        .join(", "),
+      smazano: kod.deletedAt!.toISOString(),
+      // Objednávky na kód odkazují — bez něj by nešlo poznat, odkud sleva je.
+      maHistorii: kod._count.objednavky > 0,
+      procNejde: "Je u objednávek, které s ním klienti zaplatili.",
+    })),
+    ...doporucitele.map((doporucitel) => {
+      const { kody: kodu, privedeni, objednavky: objednavek, odmeny } = doporucitel._count;
+      return {
+        druh: "doporucitel" as const,
+        id: doporucitel.id,
+        nazev: doporucitel.name,
+        popis: `${doporucitel.kind === "KLIENT" ? "klient" : "partner"}, přivedl ${pocet(privedeni, "klienta", "klienty", "klientů")}`,
+        smazano: doporucitel.deletedAt!.toISOString(),
+        // Kdo koho přivedl a komu se co vyplatilo, je historie.
+        maHistorii: kodu > 0 || privedeni > 0 || objednavek > 0 || odmeny > 0,
+        procNejde: "Má slevové kódy, přivedené klienty nebo odměny.",
       };
     }),
     ...brokeri.map((broker) => ({
       druh: "broker" as const,
       id: broker.id,
       nazev: broker.name,
-      popis: pocet(broker._count.portfolios, "portfolio", "portfolia", "portfolií"),
+      popis: "Katalog brokerů",
       smazano: broker.deletedAt!.toISOString(),
-      // Objednávky brokera nedrží — od 22. 9. 2026 se u nich nevede.
-      maHistorii: broker._count.portfolios > 0,
-      procNejde: "Používá se u portfolií klientů.",
+      // Brokera nic nedrží — objednávky ho nevedou (22. 9. 2026), portfolia
+      // s brokery u klientů zmizela 20. 10. 2026.
+      maHistorii: false,
+      procNejde: "",
     })),
     ...uzivatele.map((uzivatel) => {
-      const { calls, tasks, auditLog, events } = uzivatel._count;
+      const { tasks, auditLog, events } = uzivatel._count;
       return {
         druh: "uzivatel" as const,
         id: uzivatel.id,
@@ -242,7 +240,7 @@ export default async function SmazanePage() {
         smazano: uzivatel.deletedAt!.toISOString(),
         // Aktivita se počítá taky: kdo se přihlásil a díval se na klienty,
         // po sobě stopu nechal (Nastavení → Aktivita).
-        maHistorii: calls > 0 || tasks > 0 || auditLog > 0 || events > 0,
+        maHistorii: tasks > 0 || auditLog > 0 || events > 0,
         procNejde: "Po účtu zůstaly záznamy v systému nebo v aktivitě.",
       };
     }),

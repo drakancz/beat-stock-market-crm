@@ -2,8 +2,8 @@ import { z } from "zod";
 
 import { denParam, posunDne, zacatekDne } from "@/lib/obdobi";
 import { parametr, precti, textParam, vyberParam, type Parametry } from "@/lib/parametry";
-import type { FiltrHovoru, FiltrKlientu, FiltrObjednavek } from "@/lib/queries";
-import { CALL_OUTCOMES, ORDER_STATUSES } from "@/lib/types";
+import type { FiltrKlientu, FiltrObjednavek } from "@/lib/queries";
+import { ORDER_STATUSES } from "@/lib/types";
 
 /**
  * Čtení filtrů z adresy.
@@ -30,9 +30,23 @@ const MAX_DELKA_ID = 64;
 /**
  * Filtr podle stavu klienta zanikl 23. 9. 2026 (Jakub) spolu se sloupcem
  * Stav v seznamu. Starý odkaz s `?stav=` se tiše ignoruje.
+ *
+ * Štítek, přístup do programu a platnost přibyly 11. 10. 2026 (Fáze 5B)
+ * kvůli uloženým filtrům a hromadným akcím.
  */
+export const PRISTUPY = ["POVOLEN", "NEPOVOLEN"] as const;
+export const PLATNOSTI = ["BEZI", "SKONCILA", "ZADNA"] as const;
+/** „Platí, ale nechodí“ (Fáze 5B, 15. 10. 2026) — `src/lib/nechodi.ts`. */
+export const AKTIVITY = ["NECHODI"] as const;
+
 const filtrKlientu = z.object({
   hledat: textParam(MAX_DELKA_HLEDANI),
+  stitek: textParam(MAX_DELKA_ID),
+  pristup: vyberParam(PRISTUPY),
+  platnost: vyberParam(PLATNOSTI),
+  aktivita: vyberParam(AKTIVITY),
+  // Vlastní pole `<id pole>:<hodnota>` (Fáze 5B, 18. 10. 2026).
+  pole: textParam(MAX_DELKA_ID + 1 + 60),
 });
 
 export function prectiFiltr(parametry: Parametry): FiltrKlientu {
@@ -40,12 +54,36 @@ export function prectiFiltr(parametry: Parametry): FiltrKlientu {
 
   return {
     hledat: vstup.hledat,
+    stitek: vstup.stitek?.trim() || undefined,
+    pristup: vstup.pristup,
+    platnost: vstup.platnost,
+    aktivita: vstup.aktivita,
+    pole: vstup.pole?.trim() || undefined,
   };
 }
 
 /** Je nastavený aspoň jeden filtr? Podle toho se liší hláška u prázdného seznamu. */
 export function filtrujeSe(filtr: FiltrKlientu): boolean {
-  return Boolean(filtr.hledat);
+  return Boolean(
+    filtr.hledat || filtr.stitek || filtr.pristup || filtr.platnost || filtr.aktivita || filtr.pole,
+  );
+}
+
+/**
+ * Část adresy za otazníkem pro uložený filtr (Fáze 5B) — jen parametry
+ * filtru klientů, přečtené stejně přísně jako odkaz. Cokoli jiného
+ * se zahodí. Prázdný řetězec = žádný filtr.
+ */
+export function ulozitelnyDotaz(parametry: Parametry): string {
+  const filtr = prectiFiltr(parametry);
+  const dotaz = new URLSearchParams();
+  if (filtr.hledat?.trim()) dotaz.set("hledat", filtr.hledat.trim());
+  if (filtr.stitek) dotaz.set("stitek", filtr.stitek);
+  if (filtr.pristup) dotaz.set("pristup", filtr.pristup);
+  if (filtr.platnost) dotaz.set("platnost", filtr.platnost);
+  if (filtr.aktivita) dotaz.set("aktivita", filtr.aktivita);
+  if (filtr.pole) dotaz.set("pole", filtr.pole);
+  return dotaz.toString();
 }
 
 /** Nejmenší a největší rok, který dává ve filtru smysl. */
@@ -136,41 +174,4 @@ export function prectiFiltrObjednavek(parametry: Parametry): FiltrObjednavek {
 /** Je nastavený aspoň jeden filtr? Podle toho se liší hláška u prázdného seznamu. */
 export function filtrujiSeObjednavky(filtr: FiltrObjednavek): boolean {
   return Boolean(filtr.hledat || filtr.stav || filtr.klientId || filtr.od);
-}
-
-const filtrHovoru = z.object({
-  hledat: textParam(MAX_DELKA_HLEDANI),
-  vysledek: vyberParam(CALL_OUTCOMES),
-  // Kdo hovor zapsal. Autorství platí dál, i když klienti nikomu nepatří.
-  kdo: textParam(MAX_DELKA_ID),
-  od: denParam,
-  do: denParam,
-});
-
-/**
- * Filtry nad hovory.
- *
- * Stejně jako u klientů: výsledek jen z uzavřeného seznamu, hledaný výraz
- * zkrácený na délku a datum jen jako skutečný den v kalendáři, jinak se
- * zahodí.
- *
- * Datum „do" se převádí na **začátek následujícího dne**: v databázi má
- * hovor i čas, takže `at < 10. 9. 00:00` je jediný způsob, jak do výběru
- * dostat celý devátý.
- */
-export function prectiFiltrHovoru(parametry: Parametry): FiltrHovoru {
-  const vstup = precti(filtrHovoru, parametry);
-
-  return {
-    hledat: vstup.hledat,
-    vysledek: vstup.vysledek,
-    uzivatelId: vstup.kdo,
-    od: vstup.od,
-    do: vstup.do ? posunDne(vstup.do, 1) : undefined,
-  };
-}
-
-/** Je nastavený aspoň jeden filtr? Podle toho se liší hláška u prázdného seznamu. */
-export function filtrujiSeHovory(filtr: FiltrHovoru): boolean {
-  return Boolean(filtr.hledat || filtr.vysledek || filtr.uzivatelId || filtr.od || filtr.do);
 }

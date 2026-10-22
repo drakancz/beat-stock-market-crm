@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { PoznamkaPodCarou } from "@/components/poznamka-pod-carou";
 import { db } from "@/lib/db";
 import { odesilaniFunguje } from "@/lib/email";
-import { requireAdmin } from "@/lib/session";
+import { requireSpravceUzivatelu } from "@/lib/session";
 
 import { SpravaUzivatelu, type RadekUzivatele } from "./sprava-uzivatelu";
 
@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export default async function UzivatelePage() {
   // Oprávnění se ověřuje tady, na serveru. Kdo není administrátor,
   // dostane 404 — i když adresu zná.
-  const admin = await requireAdmin();
+  const admin = await requireSpravceUzivatelu();
   const postaFunguje = odesilaniFunguje();
 
   const [uzivatele, vKosi] = await Promise.all([

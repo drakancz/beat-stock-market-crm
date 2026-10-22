@@ -14,10 +14,10 @@ const CHRANENE_STRANKY = [
   "/klienti",
   "/klienti/duplicity",
   "/objednavky",
-  "/portfolia",
   "/brokeri",
   "/produkty",
-  "/hovory",
+  "/produkty/slevove-kody",
+  "/produkty/doporucitele",
   "/profil",
   "/sprava",
   "/sprava/uzivatele",
@@ -52,13 +52,6 @@ test.describe("nepřihlášený návštěvník", () => {
   test("po přihlášení se vrátí tam, kam chtěl", async ({ page }) => {
     await page.goto("/brokeri");
     await expect(page).toHaveURL(/\/prihlaseni\?pokracovat=%2Fbrokeri/);
-  });
-
-  test("export hovorů vrátí 401", async ({ request }) => {
-    const odpoved = await request.get("/hovory/export", { maxRedirects: 0 });
-    // Buď odbočení na přihlášení, nebo rovnou 401 — nikdy data.
-    expect([307, 401]).toContain(odpoved.status());
-    expect(await odpoved.text()).not.toContain(";");
   });
 
   test("export statistik vrátí 401", async ({ request }) => {

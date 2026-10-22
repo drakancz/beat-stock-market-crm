@@ -4,7 +4,6 @@ import { useTransition } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,8 +13,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-
-import { pocet } from "@/lib/mnozne";
 
 import { dejBrokeraDoKose } from "./actions";
 
@@ -38,13 +35,11 @@ export function DoKoseDialog({
   zavrit,
   hotovo,
 }: {
-  broker: { id: string; name: string; pocetPortfolii: number } | null;
+  broker: { id: string; name: string } | null;
   zavrit: () => void;
   hotovo: () => void;
 }) {
   const [ceka, zahaj] = useTransition();
-
-  const portfolii = broker?.pocetPortfolii ?? 0;
 
   return (
     <Dialog open={broker !== null} onOpenChange={(stav) => !stav && zavrit()}>
@@ -52,21 +47,10 @@ export function DoKoseDialog({
         <DialogHeader>
           <DialogTitle>Smazat brokera</DialogTitle>
           <DialogDescription>
-            Opravdu smazat {broker?.name}? Zmizí ze seznamu i z výběru u portfolií.{" "}
+            Opravdu smazat {broker?.name}? Zmizí ze seznamu brokerů.{" "}
             <strong>Tuhle akci nelze vzít zpět.</strong>
           </DialogDescription>
         </DialogHeader>
-
-        {portfolii > 0 && (
-          <Alert className="my-4">
-            <AlertDescription className="text-xs leading-relaxed">
-              Pozor: portfolio u něj má{" "}
-              <strong>{pocet(portfolii, "klient", "klienti", "klientů")}</strong>. Portfolia
-              zůstanou i s údajem, u koho klient investuje — broker se jen přestane nabízet u
-              nových.
-            </AlertDescription>
-          </Alert>
-        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={zavrit}>

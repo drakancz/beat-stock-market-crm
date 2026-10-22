@@ -3,7 +3,9 @@
 Tenhle soubor čte Claude Code na začátku každé práce na projektu. Je to
 **zkrácená veřejná verze** — plná verze obsahuje i provozní údaje (servery,
 nasazení, účty u služeb) a zůstává v soukromém repozitáři. Komentáře
-v kódu občas odkazují na oddíly, které tu nejsou; jde o provozní podrobnosti.
+v kódu občas odkazují na oddíly, které tu nejsou, a na podrobné popisy
+funkcí v `docs/funkce/` (interní rozhodnutí a provoz, ve veřejné kopii
+nejsou).
 
 Další závazná pravidla: [security_warnings.md](security_warnings.md)
 (proč) a [security.md](security.md) (jak přesně v tomhle projektu).

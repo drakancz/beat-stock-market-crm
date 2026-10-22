@@ -65,7 +65,6 @@ export interface BodVyvoje {
   popisek: string;
   hodnota: number;
   objednavky: number;
-  hovory: number;
 }
 
 /** Cena nových objednávek v čase. */
@@ -114,23 +113,6 @@ export function GrafHodnoty({ data, mena }: { data: BodVyvoje[]; mena: string })
   );
 }
 
-/** Počet hovorů v čase. Zvlášť od korun — jiné měřítko patří do jiného grafu. */
-export function GrafHovoru({ data }: { data: BodVyvoje[] }) {
-  const config = { hovory: { label: "Hovory" } } satisfies ChartConfig;
-
-  return (
-    <ChartContainer config={config} className="h-[260px] w-full">
-      <BarChart data={data} margin={{ left: 4, right: 8, top: 8 }}>
-        <CartesianGrid vertical={false} />
-        <XAxis dataKey="popisek" tickLine={false} axisLine={false} tickMargin={8} minTickGap={24} />
-        <YAxis tickLine={false} axisLine={false} width={36} tickMargin={4} allowDecimals={false} />
-        <ChartTooltip content={<ChartTooltipContent labelKey="popisek" />} />
-        <Bar dataKey="hovory" fill={MODRA} radius={[4, 4, 0, 0]} />
-      </BarChart>
-    </ChartContainer>
-  );
-}
-
 export interface RadekKategorie {
   label: string;
   pocet: number;
@@ -145,7 +127,7 @@ export interface RadekKategorie {
  *   Stupnice se rozprostře od světlé k tmavé v pořadí řádků.
  * - `velikost` — řádky jsou seřazené od největšího (brokeři). Nejtmavší
  *   dostane ten největší, ať odstín říká totéž co délka sloupce.
- * - `kategorie` — řádky spolu nesouvisí (výsledek hovoru). Každý svůj odstín.
+ * - `kategorie` — řádky spolu nesouvisí (stav objednávky). Každý svůj odstín.
  * - `jedna` — odstín nemá co rozlišovat. Víc než pět kroků jedné modré už
  *   od sebe nikdo nerozezná, takže šestistupňový výčet dostane jednu barvu
  *   a rozlišuje se popiskem u osy.
@@ -156,7 +138,7 @@ function barvaRadku(odstineni: Odstineni, poradi: number, celkem: number): strin
   if (odstineni === "jedna") return MODRA;
   // Odstíny se schválně **necyklí**: pátá kategorie by dostala barvu první
   // a vypadala by jako ona. Zatím je jediný takový výčet pětiprvkový
-  // (výsledek hovoru); kdyby přibyl šestý, spadne na jednu modrou.
+  //; kdyby přibyl šestý, spadne na jednu modrou.
   if (odstineni === "kategorie") return KATEGORIE[poradi] ?? MODRA;
 
   // Stupnice se roztáhne přes všechny řádky, ať se využije celý rozsah
@@ -167,7 +149,7 @@ function barvaRadku(odstineni: Odstineni, poradi: number, celkem: number): strin
 }
 
 /**
- * Vodorovné sloupce podle kategorie: výsledek hovoru, stav objednávky, zdroj.
+ * Vodorovné sloupce podle kategorie: stav objednávky, zdroj.
  *
  * Název kategorie stojí u osy a počet přímo u sloupce, takže se nic
  * nepozná jen podle odstínu.

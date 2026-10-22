@@ -1,0 +1,109 @@
+# Celá sada testů v prohlížeči (Playwright) na serverech GitHubu.
+#
+# Jakub to zadal 17. 10. 2026: na jeho počítači sada opakovaně padala
+# (plný disk, málo paměti pro Docker). Tady běží na čistém stroji
+# stejně jako doma — přes `docker compose --profile test run e2e`.
+#
+# **Bezpečnost:**
+# - Žádná tajemství. Hesla do testovací databáze a AUTH_SECRET se
+#   vymyslí při každém běhu a se strojem zaniknou. Klíče ke službám mimo
+#   počítač jsou v `compose.yaml` u služby `e2e` prázdné.
+# - Žádná skutečná data — testy si zakládají vymyšlené klienty.
+# - Jen oficiální akce GitHubu, zafixované na otisk (ne na značku, kterou
+#   jde přesunout). Testy smí kód jen číst.
+#
+# **Kdy běží:** u pull requestu do `dev` a ručně (Actions →
+# Testy v prohlížeči → Run workflow). Ne po každém pushi — soukromý
+# repozitář má zdarma 2000 minut měsíčně a jeden běh trvá desítky minut.
+# U pull requestu `dev` → `main` neběží (Jakub, 20. 10. 2026): do `main`
+# jde kód, který už prošel u pull requestu do `dev`; druhý běh stál
+# ~65 minut a nic nového neověřil. Když se od posledního zeleného běhu
+# sloučilo do `dev` víc věcí najednou, pusť sadu ručně nad `dev`.
+name: Testy v prohlížeči
+
+on:
+  pull_request:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Nový push do téhož pull requestu zruší rozběhnutý běh — počítá se poslední.
+concurrency:
+  group: testy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    # Každý prohlížeč na vlastním stroji (17. 10. 2026): celá sada na jednom
+    # stroji se kolem 250. testu zasekla. Minut se tím spotřebuje stejně,
+    # výsledek je ale zhruba třikrát dřív.
+    name: e2e (${{ matrix.prohlizec }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        prohlizec: [desktop, android, iphone]
+    steps:
+      - name: Stažení kódu
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Vymyšlené hodnoty pro testovací prostředí
+        # `.env` čte jen docker compose (databáze, AUTH_SECRET). Aplikace
+        # v testech dostane prázdný `e2e/prazdny.env`.
+        run: |
+          heslo="$(openssl rand -hex 24)"
+          {
+            echo "POSTGRES_USER=crm"
+            echo "POSTGRES_PASSWORD=${heslo}"
+            echo "POSTGRES_DB=crm"
+            echo "DATABASE_URL=postgresql://crm:${heslo}@db:5432/crm?schema=public"
+            echo "AUTH_SECRET=$(openssl rand -hex 32)"
+            echo "AUTH_URL=http://localhost:3000"
+          } > .env
+
+      - name: Sestavení aplikace a závislostí
+        # Obraz `web` nese node_modules; první spuštění je zkopíruje do
+        # svazku, ze kterého je bere i služba `e2e`. Klient Prismy se
+        # generuje do připojené složky (v repozitáři není).
+        run: |
+          docker compose build web
+          docker compose run --rm --no-deps web npx prisma generate
+
+      - name: Sada testů (${{ matrix.prohlizec }})
+        # Dva testy najednou — stroj má 2 jádra a 8 GB paměti. Každé dvě
+        # minuty se do výpisu přidá řádek [zdroje] s pamětí, diskem
+        # a kontejnery: když stroj spadne, výpis až do té chvíle zůstane.
+        run: |
+          (while true; do
+            sleep 120
+            echo "[zdroje] $(date -u +%H:%M) $(free -m | awk 'NR==2{print "pamet " $3 "/" $2 " MB"}') $(df -h / | awk 'NR==2{print "disk " $3 "/" $2}')"
+            docker stats --no-stream --format '[zdroje]   {{.Name}} {{.MemUsage}} {{.CPUPerc}}' || true
+          done) &
+          docker compose --profile test run --rm -e E2E_PRODUKCE=1 e2e \
+            npx playwright test --project=${{ matrix.prohlizec }} --workers=2
+
+      - name: Ukázkový režim (${{ matrix.prohlizec }})
+        # Malá samostatná sada nad vlastní databází (playwright.ukazka.config.ts,
+        # 22. 10. 2026). iPhone ji nemá — rozložení hlídá Android.
+        if: ${{ matrix.prohlizec != 'iphone' }}
+        run: |
+          docker compose --profile test run --rm -e E2E_PRODUKCE=1 e2e \
+            npx playwright test -c playwright.ukazka.config.ts --project=${{ matrix.prohlizec }}
+
+      - name: Zpráva z běhu a snímky spadlých testů
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zprava-testu-${{ matrix.prohlizec }}
+          path: |
+            e2e/zprava
+            e2e/vysledky
+            e2e/zprava-ukazka
+            e2e/vysledky-ukazka
+          retention-days: 7
+          if-no-files-found: ignore

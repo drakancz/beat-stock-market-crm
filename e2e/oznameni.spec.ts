@@ -108,88 +108,94 @@ async function zapisZpravu(clientId: string, text: string) {
 test.describe("zprávy od administrátora", () => {
   test.use({ storageState: stavPrihlaseni("admin") });
 
-  test("administrátor pošle zprávu, klient ji dostane e-mailem a vidí ve Zprávách", async ({
-    page,
-    browser,
-  }) => {
-    const klient = await zalozKlientaSUctem(`Zpráva Klient ${pripona()}`);
-    const text = `Dobrý den, posíláme novinku ${pripona()}.`;
+  test(
+    "administrátor pošle zprávu, klient ji dostane e-mailem a vidí ve Zprávách",
+    { tag: "@telefon" },
+    async ({ page, browser }) => {
+      const klient = await zalozKlientaSUctem(`Zpráva Klient ${pripona()}`);
+      const text = `Dobrý den, posíláme novinku ${pripona()}.`;
 
-    await page.goto(`/klienti/${klient.id}`);
-    await page.getByRole("button", { name: "Zprávy (0)" }).click();
-    const okno = page.getByRole("dialog", { name: "Zprávy klientovi" });
-    await expect(okno.getByText("Klient zatím žádnou zprávu nedostal.")).toBeVisible();
-    await okno.getByLabel("Nová zpráva").fill(text);
-    await okno.getByRole("button", { name: "Poslat zprávu" }).click();
-    await cekejNaUspech(page, /přišla mu e-mailem/);
-    await expect(okno.getByText(text)).toBeVisible();
-    await expect(okno.getByText(/doručeno e-mailem · zatím nepřečteno/)).toBeVisible();
+      await page.goto(`/klienti/${klient.id}`);
+      await page.getByRole("button", { name: "Zprávy (0)" }).click();
+      const okno = page.getByRole("dialog", { name: "Zprávy klientovi" });
+      await expect(okno.getByText("Klient zatím žádnou zprávu nedostal.")).toBeVisible();
+      await okno.getByLabel("Nová zpráva").fill(text);
+      await okno.getByRole("button", { name: "Poslat zprávu" }).click();
+      await cekejNaUspech(page, /přišla mu e-mailem/);
+      await expect(okno.getByText(text)).toBeVisible();
+      await expect(okno.getByText(/doručeno e-mailem · zatím nepřečteno/)).toBeVisible();
 
-    // Náhradní e-mail s celým textem a odkazem do Zpráv.
-    const email = await cekejNaEmail(klient.email, "Zpráva od Beat Stock Market");
-    expect(email.Text).toContain(text);
-    expect(email.Text).toMatch(/\/ucet\/zpravy/);
+      // Náhradní e-mail s celým textem a odkazem do Zpráv.
+      const email = await cekejNaEmail(klient.email, "Zpráva od Beat Stock Market");
+      expect(email.Text).toContain(text);
+      expect(email.Text).toMatch(/\/ucet\/zpravy/);
 
-    // Klient vidí odznak s počtem a zprávu, otevřením ji přečte.
-    const klientska = await prohlizecKlienta(browser);
-    await prihlasKlienta(klientska, klient.email, klient.heslo);
-    await expect(klientska.getByRole("link", { name: "Zprávy, nepřečtené: 1" })).toBeVisible();
-    await klientska.getByRole("link", { name: "Zprávy, nepřečtené: 1" }).click();
-    await expect(klientska.getByRole("heading", { name: "Zprávy" })).toBeVisible();
-    await expect(klientska.getByText(text)).toBeVisible();
-    await expect(klientska.getByText("nová")).toBeVisible();
-    await bezVodorovnehoPosuvu(klientska);
+      // Klient vidí odznak s počtem a zprávu, otevřením ji přečte.
+      const klientska = await prohlizecKlienta(browser);
+      await prihlasKlienta(klientska, klient.email, klient.heslo);
+      await expect(klientska.getByRole("link", { name: "Zprávy, nepřečtené: 1" })).toBeVisible();
+      // Klik se opakuje, kdyby přišel dřív, než stránka ožije (pomalý GitHub).
+      await expect(async () => {
+        await klientska.getByRole("link", { name: /^Zprávy/ }).click();
+        await expect(klientska).toHaveURL(/\/ucet\/zpravy/, { timeout: 5_000 });
+      }).toPass({ timeout: 60_000 });
+      await expect(klientska.getByRole("heading", { name: "Zprávy" })).toBeVisible();
+      await expect(klientska.getByText(text)).toBeVisible();
+      await expect(klientska.getByText("nová")).toBeVisible();
+      await bezVodorovnehoPosuvu(klientska);
 
-    // Na kartě je vidět, že je přečtená.
-    await otevriAzUvidis(
-      page,
-      `/klienti/${klient.id}`,
-      page.getByRole("button", { name: "Zprávy (1)" }),
-    );
-    await page.getByRole("button", { name: "Zprávy (1)" }).click();
-    await expect(page.getByRole("dialog").getByText(/· přečteno /)).toBeVisible();
+      // Na kartě je vidět, že je přečtená.
+      await otevriAzUvidis(
+        page,
+        `/klienti/${klient.id}`,
+        page.getByRole("button", { name: "Zprávy (1)" }),
+      );
+      await page.getByRole("button", { name: "Zprávy (1)" }).click();
+      await expect(page.getByRole("dialog").getByText(/· přečteno /)).toBeVisible();
 
-    await klientska.context().close();
-  });
+      await klientska.context().close();
+    },
+  );
 
-  test("klient s vypnutými upozorněními dostane zprávu jen do klientské části", async ({
-    page,
-    browser,
-  }) => {
-    const klient = await zalozKlientaSUctem(`Zpráva Vypnuto ${pripona()}`);
+  test(
+    "klient s vypnutými upozorněními dostane zprávu jen do klientské části",
+    { tag: "@telefon" },
+    async ({ page, browser }) => {
+      const klient = await zalozKlientaSUctem(`Zpráva Vypnuto ${pripona()}`);
 
-    const klientska = await prohlizecKlienta(browser);
-    await prihlasKlienta(klientska, klient.email, klient.heslo);
-    await klientska.goto("/ucet/profil");
-    await expect(klientska.getByText("Upozornění", { exact: true })).toBeVisible();
-    await klientska.getByRole("button", { name: "Vypnout upozornění" }).click();
-    await cekejNaUspech(klientska, "Upozornění jsou vypnutá.");
-    await expect(klientska.getByRole("button", { name: "Zapnout upozornění" })).toBeVisible();
+      const klientska = await prohlizecKlienta(browser);
+      await prihlasKlienta(klientska, klient.email, klient.heslo);
+      await klientska.goto("/ucet/profil");
+      await expect(klientska.getByText("Upozornění", { exact: true })).toBeVisible();
+      await klientska.getByRole("button", { name: "Vypnout upozornění" }).click();
+      await cekejNaUspech(klientska, "Upozornění jsou vypnutá.");
+      await expect(klientska.getByRole("button", { name: "Zapnout upozornění" })).toBeVisible();
 
-    const text = `Tichá zpráva ${pripona()}`;
-    await page.goto(`/klienti/${klient.id}`);
-    await page.getByRole("button", { name: "Zprávy (0)" }).click();
-    const okno = page.getByRole("dialog", { name: "Zprávy klientovi" });
-    await expect(okno.getByText(/má upozornění vypnutá/)).toBeVisible();
-    await okno.getByLabel("Nová zpráva").fill(text);
-    await okno.getByRole("button", { name: "Poslat zprávu" }).click();
-    await cekejNaUspech(page, /uvidí ji po přihlášení/);
-    await expect(okno.getByText(/jen v klientské části/)).toBeVisible();
+      const text = `Tichá zpráva ${pripona()}`;
+      await page.goto(`/klienti/${klient.id}`);
+      await page.getByRole("button", { name: "Zprávy (0)" }).click();
+      const okno = page.getByRole("dialog", { name: "Zprávy klientovi" });
+      await expect(okno.getByText(/má upozornění vypnutá/)).toBeVisible();
+      await okno.getByLabel("Nová zpráva").fill(text);
+      await okno.getByRole("button", { name: "Poslat zprávu" }).click();
+      await cekejNaUspech(page, /uvidí ji po přihlášení/);
+      await expect(okno.getByText(/jen v klientské části/)).toBeVisible();
 
-    // E-mail nepřišel ani po chvíli.
-    await page.waitForTimeout(2_000);
-    expect(await emaily(klient.email)).toHaveLength(0);
+      // E-mail nepřišel ani po chvíli.
+      await page.waitForTimeout(2_000);
+      expect(await emaily(klient.email)).toHaveLength(0);
 
-    await klientska.goto("/ucet/zpravy");
-    await expect(klientska.getByText(text)).toBeVisible();
+      await klientska.goto("/ucet/zpravy");
+      await expect(klientska.getByText(text)).toBeVisible();
 
-    // Zapnutí vrátí upozornění.
-    await klientska.goto("/ucet/profil");
-    await klientska.getByRole("button", { name: "Zapnout upozornění" }).click();
-    await cekejNaUspech(klientska, "Upozornění jsou zapnutá.");
+      // Zapnutí vrátí upozornění.
+      await klientska.goto("/ucet/profil");
+      await klientska.getByRole("button", { name: "Zapnout upozornění" }).click();
+      await cekejNaUspech(klientska, "Upozornění jsou zapnutá.");
 
-    await klientska.context().close();
-  });
+      await klientska.context().close();
+    },
+  );
 
   test("klientovi bez účtu zprávu poslat nejde", async ({ page }) => {
     const jmeno = `Zpráva Bez Účtu ${pripona()}`;
@@ -205,7 +211,7 @@ test.describe("zprávy od administrátora", () => {
     await expect(page.getByRole("button", { name: /^Zprávy/ })).toHaveCount(0);
   });
 
-  test("klient vidí jen svoje zprávy", async ({ browser }) => {
+  test("klient vidí jen svoje zprávy", { tag: "@telefon" }, async ({ browser }) => {
     const ja = await zalozKlientaSUctem(`Zprávy Já ${pripona()}`);
     const cizi = await zalozKlientaSUctem(`Zprávy Cizí ${pripona()}`);
     const ciziText = `Cizí zpráva ${pripona()}`;
@@ -360,29 +366,37 @@ test.describe("aplikace na ploše", () => {
     expect(await sw.text()).toContain("showNotification");
   });
 
-  test("klientská část a CRM odkazují každá na svůj manifest", async ({ browser }) => {
-    const stranka = await prohlizecKlienta(browser);
-    await stranka.goto("/ucet/prihlaseni");
-    await expect(stranka.locator('link[rel="manifest"]')).toHaveAttribute(
-      "href",
-      "/ucet/aplikace.webmanifest",
-    );
-    await stranka.goto("/prihlaseni");
-    await expect(stranka.locator('link[rel="manifest"]')).toHaveAttribute(
-      "href",
-      "/aplikace.webmanifest",
-    );
-    await stranka.context().close();
-  });
+  test(
+    "klientská část a CRM odkazují každá na svůj manifest",
+    { tag: "@telefon" },
+    async ({ browser }) => {
+      const stranka = await prohlizecKlienta(browser);
+      await stranka.goto("/ucet/prihlaseni");
+      await expect(stranka.locator('link[rel="manifest"]')).toHaveAttribute(
+        "href",
+        "/ucet/aplikace.webmanifest",
+      );
+      await stranka.goto("/prihlaseni");
+      await expect(stranka.locator('link[rel="manifest"]')).toHaveAttribute(
+        "href",
+        "/aplikace.webmanifest",
+      );
+      await stranka.context().close();
+    },
+  );
 
-  test("Upozornění v Mém profilu klienta nepřečnívají na telefonu", async ({ browser }) => {
-    const klient = await zalozKlientaSUctem(`Profil Upozornění ${pripona()}`);
-    const klientska = await prohlizecKlienta(browser);
-    await prihlasKlienta(klientska, klient.email, klient.heslo);
-    await klientska.goto("/ucet/profil");
-    await expect(klientska.getByText("Upozornění", { exact: true })).toBeVisible();
-    await expect(klientska.getByText("Upozornění jsou")).toBeVisible();
-    await bezVodorovnehoPosuvu(klientska);
-    await klientska.context().close();
-  });
+  test(
+    "Upozornění v Mém profilu klienta nepřečnívají na telefonu",
+    { tag: "@telefon" },
+    async ({ browser }) => {
+      const klient = await zalozKlientaSUctem(`Profil Upozornění ${pripona()}`);
+      const klientska = await prohlizecKlienta(browser);
+      await prihlasKlienta(klientska, klient.email, klient.heslo);
+      await klientska.goto("/ucet/profil");
+      await expect(klientska.getByText("Upozornění", { exact: true })).toBeVisible();
+      await expect(klientska.getByText("Upozornění jsou")).toBeVisible();
+      await bezVodorovnehoPosuvu(klientska);
+      await klientska.context().close();
+    },
+  );
 });

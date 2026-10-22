@@ -18,7 +18,10 @@ export default function TextyLayout({ children }: { children: React.ReactNode })
       <article className="bg-card w-full max-w-2xl rounded-xl border p-5 sm:p-8">
         {children}
       </article>
-      <nav aria-label="Dokumenty" className="text-muted-foreground flex gap-4 text-xs">
+      <nav
+        aria-label="Dokumenty"
+        className="text-muted-foreground flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs"
+      >
         <Link
           href="/ucet/zasady"
           className="hover:text-foreground underline-offset-4 hover:underline"
@@ -30,6 +33,12 @@ export default function TextyLayout({ children }: { children: React.ReactNode })
           className="hover:text-foreground underline-offset-4 hover:underline"
         >
           Podmínky
+        </Link>
+        <Link
+          href="/ucet/obchodni-podminky"
+          className="hover:text-foreground underline-offset-4 hover:underline"
+        >
+          Obchodní podmínky
         </Link>
         <Link href="/ucet" className="hover:text-foreground underline-offset-4 hover:underline">
           Klientská část

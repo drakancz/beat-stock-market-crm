@@ -19,6 +19,7 @@ export interface NastaveniFirmy {
   ico: string | null;
   dic: string | null;
   address: string | null;
+  bankAccount: string | null;
   contactEmail: string | null;
   vatPayer: boolean;
   emailSenderName: string | null;
@@ -38,10 +39,12 @@ export interface NastaveniFirmy {
   errorNotificationsEnabled: boolean;
   /** Kdy upozornění na chyby naposledy odešlo. */
   errorNotificationSentAt: Date | null;
-  /** Kdo dostává úkoly na prodloužení členství (Jakub, 24. 9. 2026). */
-  renewalUserId: string | null;
-  /** Kolik dní před koncem platnosti úkol vznikne. */
-  renewalLeadDays: number;
+  /** Připomínka nezaplacené objednávky (Fáze 5A, 11. 10. 2026). */
+  paymentRemindersEnabled: boolean;
+  paymentReminderFirstDays: number;
+  paymentReminderSecondDays: number;
+  /** „Platí, ale nechodí“ (Fáze 5B, 15. 10. 2026): po kolika dnech bez návštěvy. */
+  inactiveMemberDays: number;
 }
 
 export const VYCHOZI_NASTAVENI: NastaveniFirmy = {
@@ -49,6 +52,7 @@ export const VYCHOZI_NASTAVENI: NastaveniFirmy = {
   ico: null,
   dic: null,
   address: null,
+  bankAccount: null,
   contactEmail: null,
   vatPayer: true,
   emailSenderName: null,
@@ -62,8 +66,10 @@ export const VYCHOZI_NASTAVENI: NastaveniFirmy = {
   smartemailingWebhookId: null,
   errorNotificationsEnabled: true,
   errorNotificationSentAt: null,
-  renewalUserId: null,
-  renewalLeadDays: 14,
+  paymentRemindersEnabled: true,
+  paymentReminderFirstDays: 3,
+  paymentReminderSecondDays: 7,
+  inactiveMemberDays: 21,
 };
 
 /** Nejdelší přihlášení, které jde nastavit. Stejné číslo je `maxAge` v Auth.js. */
@@ -78,6 +84,7 @@ export const nactiNastaveni = cache(async (): Promise<NastaveniFirmy> => {
     ico: radek.ico,
     dic: radek.dic,
     address: radek.address,
+    bankAccount: radek.bankAccount,
     contactEmail: radek.contactEmail,
     vatPayer: radek.vatPayer,
     emailSenderName: radek.emailSenderName,
@@ -91,8 +98,10 @@ export const nactiNastaveni = cache(async (): Promise<NastaveniFirmy> => {
     smartemailingWebhookId: radek.smartemailingWebhookId,
     errorNotificationsEnabled: radek.errorNotificationsEnabled,
     errorNotificationSentAt: radek.errorNotificationSentAt,
-    renewalUserId: radek.renewalUserId,
-    renewalLeadDays: radek.renewalLeadDays,
+    paymentRemindersEnabled: radek.paymentRemindersEnabled,
+    paymentReminderFirstDays: radek.paymentReminderFirstDays,
+    paymentReminderSecondDays: radek.paymentReminderSecondDays,
+    inactiveMemberDays: radek.inactiveMemberDays,
   };
 });
 

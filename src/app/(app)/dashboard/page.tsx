@@ -7,9 +7,9 @@ import {
   Filter,
   ReceiptText,
   Info,
-  ListChecks,
   Megaphone,
   Minus,
+  Repeat,
   Target,
   TrendingUp,
   type LucideIcon,
@@ -27,10 +27,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { nactiPlneniCilu } from "@/lib/cile";
+import { LHUTA_DNU, miraProdlouzeni, nactiCislaClenstvi } from "@/lib/clenstvi";
 import { formatDate, formatPrice } from "@/lib/format";
 import { dnesniVolno } from "@/lib/nastaveni";
 import { krokProObdobi, prectiObdobi } from "@/lib/obdobi";
-import { zalozUkolyNaProdlouzeni } from "@/lib/platnost";
 import { nactiDashboard, nactiKlientyProVyber, nactiMojeUkoly } from "@/lib/queries";
 import { requireViewer } from "@/lib/session";
 import { nactiTrychtyr, podil } from "@/lib/trychtyr";
@@ -106,6 +106,25 @@ function Nadpis({ ikona: Ikona, children }: { ikona: LucideIcon; children: React
   );
 }
 
+/** Jedno číslo v oddílu Členství: popisek, hodnota, vysvětlivka. */
+function UdajClenstvi({
+  titulek,
+  hodnota,
+  pod,
+}: {
+  titulek: string;
+  hodnota: string;
+  pod: string;
+}) {
+  return (
+    <div className="min-w-0 space-y-0.5">
+      <dt className="text-muted-foreground text-sm">{titulek}</dt>
+      <dd className="tabular text-2xl leading-tight font-semibold">{hodnota}</dd>
+      <dd className="text-muted-foreground text-xs">{pod}</dd>
+    </div>
+  );
+}
+
 function Dlazdice({
   titulek,
   hodnota,
@@ -160,14 +179,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
   const parametry = await searchParams;
   const obdobi = prectiObdobi(parametry);
 
-  /*
-   * Úkoly na prodloužení členství (Jakub, 24. 9. 2026) vznikají tady,
-   * před načtením Mého dne — automatické spouštění podle hodin aplikace
-   * nemá a úkoly jsou vidět jen tady. Nic nevyhazuje, Dashboard neshodí.
-   */
-  await zalozUkolyNaProdlouzeni();
-
-  const [data, cile, ukoly, volno, klienti, majitele, trychtyr] = await Promise.all([
+  const [data, cile, ukoly, volno, klienti, majitele, trychtyr, clenstvi] = await Promise.all([
     nactiDashboard(viewer, obdobi),
     nactiPlneniCilu(viewer),
     nactiMojeUkoly(viewer),
@@ -176,10 +188,11 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
     nactiKlientyProVyber(viewer),
     nactiMozneMajitele(),
     nactiTrychtyr(viewer, obdobi),
+    nactiCislaClenstvi(viewer, obdobi),
   ]);
 
   const krok = krokProObdobi(obdobi.dnu);
-  const prazdno = data.soucasnost.objednavky === 0 && data.soucasnost.hovory === 0;
+  const prazdno = data.soucasnost.objednavky === 0;
 
   return (
     <>
@@ -248,10 +261,9 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
         případech z období. Zrušila se spolu s grafem téhož jména: broker
         se u objednávky nevede vůbec.
 
-        Tři se schválně nelámou na `xl:grid-cols-4`, aby vedle nich
-        nezůstávalo prázdné čtvrté místo.
+        Třetí dlaždice (Hovory) zmizela 20. 10. 2026 spolu s hovory v CRM.
       */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <Dlazdice
           titulek="Objednávky"
           hodnota={String(data.soucasnost.objednavky)}
@@ -265,13 +277,6 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
           pod="bez DPH, objednávky přijaté v období"
           ted={data.soucasnost.hodnota}
           drive={data.minulost.hodnota}
-        />
-        <Dlazdice
-          titulek="Hovory"
-          hodnota={String(data.soucasnost.hovory)}
-          pod="uskutečněné v období"
-          ted={data.soucasnost.hovory}
-          drive={data.minulost.hovory}
         />
       </div>
 
@@ -336,8 +341,8 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
           <Info />
           <AlertTitle>Za tohle období tu nic není</AlertTitle>
           <AlertDescription>
-            Ve vybraném rozsahu nepřišla žádná objednávka a nikdo nevolal. Zkus delší období — grafy
-            níž zůstávají prázdné, ne rozbité.
+            Ve vybraném rozsahu nepřišla žádná objednávka. Zkus delší období — grafy níž zůstávají
+            prázdné, ne rozbité.
           </AlertDescription>
         </Alert>
       )}
@@ -448,48 +453,91 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
       </Card>
 
       {/*
-        Dvě karty do dvou sloupců — mřížka tak vyjde beze zbytku. Po
-        osekávání jich tu bylo pět a lichý počet nechával vpravo dole díru.
+        Čísla členství (Jakub, 10. 10. 2026). Vidí každý přihlášený.
+        Aktivní členové a měsíční příjem jsou k dnešku, ostatní za období.
+      */}
+      <Card>
+        <CardHeader>
+          <Nadpis ikona={Repeat}>Členství</Nadpis>
+          <CardDescription>
+            Aktivní členové a měsíční příjem k dnešku, prodloužení a noví členové za období.
+            Prodloužení = další platba nejpozději {LHUTA_DNU} dní po konci. Částky bez DPH.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <dl
+            className="grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-3"
+            aria-label="Čísla členství"
+          >
+            <UdajClenstvi
+              titulek="Aktivní členové"
+              hodnota={String(clenstvi.aktivniClenove)}
+              pod="dnes s platným členstvím"
+            />
+            <UdajClenstvi
+              titulek="Měsíční příjem z členství"
+              hodnota={formatPrice(clenstvi.mesicniPrijem, MENA_CENIKU)}
+              pod="cena běžících členství přepočtená na měsíc"
+            />
+            <UdajClenstvi
+              titulek="Míra prodloužení"
+              hodnota={miraProdlouzeni(clenstvi) === null ? "—" : `${miraProdlouzeni(clenstvi)} %`}
+              pod={
+                clenstvi.prodlouzilo + clenstvi.odeslo === 0
+                  ? "v období žádné členství neskončilo"
+                  : `prodloužilo ${clenstvi.prodlouzilo} z ${clenstvi.prodlouzilo + clenstvi.odeslo}`
+              }
+            />
+            <UdajClenstvi
+              titulek="Odešli"
+              hodnota={String(clenstvi.odeslo)}
+              pod={
+                clenstvi.cekaNaRozhodnuti > 0
+                  ? `čeká na rozhodnutí: ${clenstvi.cekaNaRozhodnuti}`
+                  : "členství skončilo a neprodloužili"
+              }
+            />
+            <UdajClenstvi
+              titulek="Noví členové"
+              hodnota={String(clenstvi.noviClenove)}
+              pod="poprvé koupili členství v období"
+            />
+            <UdajClenstvi
+              titulek="Průměrná útrata klienta"
+              hodnota={formatPrice(clenstvi.prumernaUtrata, MENA_CENIKU)}
+              pod={`za celou dobu, z ${clenstvi.platicichKlientu} platících klientů`}
+            />
+          </dl>
+        </CardContent>
+      </Card>
+
+      {/*
+        Hovory podle výsledku zmizely 20. 10. 2026 spolu s hovory v CRM;
+        Noví klienti podle zdroje zůstali sami, proto bez mřížky.
 
         Co odsud zmizelo (Jakub, 22. 9. 2026): „Hovory v čase" a „Brokeři
         na případech" a „Obchodníci" 22. 9. dopoledne, „Klienti podle
         stavu" odpoledne — ta druhá pipeline se pletla s tou nad sebou
         a stav klienta je vidět na jeho kartě (filtr stavů v seznamu zanikl 23. 9.).
       */}
-      <div className="grid items-start gap-5 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <Nadpis ikona={ListChecks}>Hovory podle výsledku</Nadpis>
-            <CardDescription>Jak hovory v období dopadly.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <GrafKategorii
-              data={data.hovoryPodleVysledku}
-              popisPoctu="hovorů"
-              odstineni="kategorie"
-            />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <Nadpis ikona={Megaphone}>Noví klienti podle zdroje</Nadpis>
-            <CardDescription>
-              Odkud se o nás dozvěděli klienti založení v období. Seznam zdrojů spravuje
-              administrátor v Nastavení.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {data.podleZdroje.length > 0 ? (
-              <GrafKategorii data={data.podleZdroje} popisPoctu="klientů" odstineni="velikost" />
-            ) : (
-              <p className="text-muted-foreground py-8 text-center text-sm">
-                V období nepřibyl žádný klient.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <Card>
+        <CardHeader>
+          <Nadpis ikona={Megaphone}>Noví klienti podle zdroje</Nadpis>
+          <CardDescription>
+            Odkud se o nás dozvěděli klienti založení v období. Seznam zdrojů spravuje administrátor
+            v Nastavení.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {data.podleZdroje.length > 0 ? (
+            <GrafKategorii data={data.podleZdroje} popisPoctu="klientů" odstineni="velikost" />
+          ) : (
+            <p className="text-muted-foreground py-8 text-center text-sm">
+              V období nepřibyl žádný klient.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {/*
         Poznámka pod čarou (vzor pro `PoznamkaPodCarou`, 23. 9. 2026). Dřív tu byl `PhaseNotice` s nadpisem „Zatím

@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { overHeslo } from "@/lib/hesla";
 import { MAX_KLICU, novyKlic, PLATNOSTI_DNU } from "@/lib/mcp/klice";
 import { requireAdmin } from "@/lib/session";
+import { jeUkazkovyTym, VYPNUTO_V_UKAZCE } from "@/lib/ukazka";
 
 /**
  * Klíče pro AI (MCP) v Mém profilu (Jakub, 27. 9. 2026).
@@ -42,6 +43,8 @@ const vytvoreniSchema = z.object({
 
 export async function vytvorKlicMcp(formData: FormData): Promise<VysledekKlice> {
   const viewer = await requireAdmin();
+  // Ukázkový účet má veřejné heslo — klíč by si mohl odnést kdokoli.
+  if (jeUkazkovyTym(viewer.email)) return { ok: false, chyba: VYPNUTO_V_UKAZCE };
 
   const vstup = vytvoreniSchema.safeParse({
     nazev: formData.get("nazev"),

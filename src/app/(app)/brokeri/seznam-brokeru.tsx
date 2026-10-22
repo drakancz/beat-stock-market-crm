@@ -29,7 +29,6 @@ export interface RadekBrokera {
   website: string | null;
   logo: string | null;
   note: string | null;
-  pocetPortfolii: number;
 }
 
 /** Napojení „Ano" je dobrá zpráva, proto vystoupí; zbytek zůstává tichý. */
@@ -65,7 +64,6 @@ export function SeznamBrokeru({
               <TableHead>Broker</TableHead>
               <TableHead>Automatické napojení</TableHead>
               <TableHead className="hidden lg:table-cell">Poznámka</TableHead>
-              <TableHead className="text-right">Portfolia</TableHead>
               {jeAdmin && <TableHead className="text-right">Akce</TableHead>}
             </TableRow>
           </TableHeader>
@@ -104,7 +102,6 @@ export function SeznamBrokeru({
                 <TableCell className="text-muted-foreground hidden max-w-xs truncate lg:table-cell">
                   {broker.note ?? <span aria-hidden>—</span>}
                 </TableCell>
-                <TableCell className="tabular text-right">{broker.pocetPortfolii}</TableCell>
                 {jeAdmin && (
                   <TableCell className="text-right whitespace-nowrap">
                     <BrokerDialog broker={broker} />

@@ -17,13 +17,7 @@ import { DoKoseDialog } from "../smazani-brokera";
  * Broker v koši se dá pořád otevřít — jen místo úprav nabídne návrat.
  * Po odložení do koše se odchází zpátky na seznam.
  */
-export function AkceBrokera({
-  broker,
-  vKosi,
-}: {
-  broker: BrokerKUprave & { pocetPortfolii: number };
-  vKosi: boolean;
-}) {
+export function AkceBrokera({ broker, vKosi }: { broker: BrokerKUprave; vKosi: boolean }) {
   const router = useRouter();
   const [doKose, setDoKose] = useState(false);
   const [ceka, zahaj] = useTransition();

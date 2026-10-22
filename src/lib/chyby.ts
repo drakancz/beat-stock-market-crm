@@ -42,7 +42,14 @@ export type DruhChyby =
   | "email.upozorneni"
   | "lead.odmitnut"
   /// Objednávka z Landing Page, kterou CRM nepřijalo.
-  | "objednavka.odmitnuta";
+  | "objednavka.odmitnuta"
+  /// Odchozí webhook (19. 10. 2026) — zpráva jiné službě nedorazila.
+  /// Neopakuje se, mohla by dorazit dvakrát.
+  | "webhook.odeslani"
+  /// Google Kalendář (20. 10. 2026) — událost konzultace se nezapsala
+  /// ani nesmazala. Neopakuje se odtud; Nastavení → Kalendář má „Zapsat
+  /// budoucí rezervace“.
+  | "kalendar.zapis";
 
 export const POPIS_DRUHU_CHYBY: Record<DruhChyby, string> = {
   "smartemailing.klient": "SmartEmailing — odeslání klienta",
@@ -59,9 +66,12 @@ export const POPIS_DRUHU_CHYBY: Record<DruhChyby, string> = {
   "email.upozorneni": "E-mail — upozornění na chyby",
   "lead.odmitnut": "Lead z webu — odmítnutý",
   "objednavka.odmitnuta": "Objednávka z Landing Page — odmítnutá",
+  "webhook.odeslani": "Webhook — nedoručená zpráva",
+  "kalendar.zapis": "Google Kalendář — událost se nezapsala",
 };
 
-export type SkupinaChyb = "smartemailing" | "email" | "lead" | "objednavka";
+export type SkupinaChyb =
+  "smartemailing" | "email" | "lead" | "objednavka" | "webhook" | "kalendar";
 
 export const SKUPINA_CHYB: Record<SkupinaChyb, DruhChyby[]> = {
   smartemailing: [
@@ -82,6 +92,8 @@ export const SKUPINA_CHYB: Record<SkupinaChyb, DruhChyby[]> = {
   ],
   lead: ["lead.odmitnut"],
   objednavka: ["objednavka.odmitnuta"],
+  webhook: ["webhook.odeslani"],
+  kalendar: ["kalendar.zapis"],
 };
 
 /**
@@ -96,6 +108,8 @@ export function jdeZnovuSpustit(druh: string): boolean {
     "email.upozorneni",
     "email.upozorneni-klienta",
     "smartemailing.webhook",
+    "webhook.odeslani",
+    "kalendar.zapis",
   ];
 
   return !bezOpakovani.includes(druh);

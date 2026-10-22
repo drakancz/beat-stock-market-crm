@@ -261,7 +261,8 @@ test.describe("objednávky očima obchodníka", () => {
     const radekKlienta = page.getByRole("row").filter({ hasText: klient });
     await otevriAzUvidis(page, `/klienti?hledat=${encodeURIComponent(klient)}`, radekKlienta);
     await expect(radekKlienta.getByText("Nepovolen", { exact: true })).toBeVisible();
-    await expect(page.getByRole("combobox", { name: /Přístup do programu/ })).toHaveCount(0);
+    // Ne celá stránka — nahoře je od 11. 10. 2026 filtr „Přístup do programu“.
+    await expect(radekKlienta.getByRole("combobox")).toHaveCount(0);
 
     // Poznámku a smazání má i obchodník.
     await otevriAzUvidis(page, `/objednavky?hledat=${encodeURIComponent(nazev)}`, radek);
@@ -292,7 +293,7 @@ test.describe("objednávky očima obchodníka", () => {
 test.describe("objednávky na telefonu", () => {
   test.use({ storageState: stavPrihlaseni("admin") });
 
-  test("nic nepřečnívá z okna", async ({ page }) => {
+  test("nic nepřečnívá z okna", { tag: "@telefon" }, async ({ page }) => {
     test.skip(!jeMobil(page), "Týká se jen telefonu.");
 
     await page.goto("/objednavky");

@@ -1,5 +1,6 @@
 import type { Prisma } from "@/generated/prisma/client";
-import type { CallOutcome, OrderStatus, ProductKind } from "@/generated/prisma/enums";
+import type { OrderStatus, ProductKind } from "@/generated/prisma/enums";
+import { aktualniHraniceNechodi, nechodi, podminkaNechodi } from "@/lib/nechodi";
 import { cenaPolozkyBezDph, cenaPolozkySDph, sDph } from "@/lib/dph";
 import { db } from "@/lib/db";
 import { klientiPodleTelefonu, klientiPodleTextu, produktyPodleTextu } from "@/lib/hledani";
@@ -15,7 +16,8 @@ import {
 } from "@/lib/obdobi";
 import { dnesniZacatek } from "@/lib/platnost";
 import type { Viewer } from "@/lib/session";
-import { CALL_OUTCOMES, DRUHY_BEZ_PLATNOSTI, ORDER_STATUSES, OUTCOME_LABEL } from "@/lib/types";
+import { DRUHY_BEZ_PLATNOSTI, ORDER_STATUSES } from "@/lib/types";
+import { prectiFiltrPole } from "@/lib/vlastni-pole-druhy";
 
 /**
  * Čtení dat z databáze.
@@ -48,11 +50,6 @@ export function viditelniKlienti(viewer: Viewer): Prisma.ClientWhereInput {
   return { deletedAt: null };
 }
 
-/** Portfolia, která má daná role vidět — bez odložených a bez cizích klientů. */
-export function viditelnaPortfolia(viewer: Viewer): Prisma.PortfolioWhereInput {
-  return { deletedAt: null, client: viditelniKlienti(viewer) };
-}
-
 const cislo = (hodnota: Prisma.Decimal) => hodnota.toNumber();
 
 /* ---------- Klienti ---------- */
@@ -61,6 +58,15 @@ const cislo = (hodnota: Prisma.Decimal) => hodnota.toNumber();
 export interface FiltrKlientu {
   /** Jméno, e-mail nebo telefon — hledá se ve všech třech. */
   hledat?: string;
+  /** Id štítku (Fáze 5B, 11. 10. 2026). Smazaný štítek nenajde nikoho. */
+  stitek?: string;
+  pristup?: "POVOLEN" | "NEPOVOLEN";
+  /** Platnost produktů jako ve sloupci Platnost do: běží / skončila / žádná. */
+  platnost?: "BEZI" | "SKONCILA" | "ZADNA";
+  /** Platí, ale nechodí (Fáze 5B, 15. 10. 2026). */
+  aktivita?: "NECHODI";
+  /** Vlastní pole `<id pole>:<hodnota>` (Fáze 5B, 18. 10. 2026). */
+  pole?: string;
 }
 
 /**
@@ -88,6 +94,43 @@ async function podleFiltru(filtr: FiltrKlientu): Promise<Prisma.ClientWhereInput
     podminky.push({ id: { in: [...podleTextu, ...podleTelefonu] } });
   }
 
+  // Štítek, přístup a platnost (Fáze 5B, 11. 10. 2026).
+  if (filtr.stitek) {
+    podminky.push({ stitky: { some: { tagId: filtr.stitek, tag: { deletedAt: null } } } });
+  }
+  if (filtr.pristup) podminky.push({ programAccess: filtr.pristup });
+  // Vlastní pole (5B, 18. 10. 2026): smazané pole nenajde nikoho.
+  if (filtr.pole) {
+    const podlePole = prectiFiltrPole(filtr.pole);
+    podminky.push(
+      podlePole
+        ? {
+            vlastniPole: {
+              some: {
+                fieldId: podlePole.fieldId,
+                value: podlePole.value,
+                field: { deletedAt: null },
+              },
+            },
+          }
+        : { id: { in: [] } },
+    );
+  }
+  if (filtr.platnost) {
+    const bezi = { validUntil: { gte: dnesniZacatek() } };
+    const nejaka = { validUntil: { not: null } };
+    podminky.push(
+      filtr.platnost === "BEZI"
+        ? { platnosti: { some: bezi } }
+        : filtr.platnost === "SKONCILA"
+          ? { AND: [{ platnosti: { some: nejaka } }, { platnosti: { none: bezi } }] }
+          : { platnosti: { none: nejaka } },
+    );
+  }
+  if (filtr.aktivita === "NECHODI") {
+    podminky.push(podminkaNechodi((await aktualniHraniceNechodi()).hranice));
+  }
+
   return podminky;
 }
 
@@ -107,6 +150,7 @@ function shrnPlatnost(konce: number[], dnes: number): { do: Date; skoncilo: bool
 }
 
 export async function nactiKlienty(viewer: Viewer, filtr: FiltrKlientu = {}) {
+  const { hranice } = await aktualniHraniceNechodi();
   const klienti = await db.client.findMany({
     where: { AND: [viditelniKlienti(viewer), ...(await podleFiltru(filtr))] },
     orderBy: { name: "asc" },
@@ -126,10 +170,18 @@ export async function nactiKlienty(viewer: Viewer, filtr: FiltrKlientu = {}) {
       orders: {
         where: { deletedAt: null },
         orderBy: { createdAt: "desc" },
-        select: { createdAt: true, status: true },
+        select: { createdAt: true, status: true, paidAt: true },
       },
+      /** Poslední návštěva klientské části — značka „Nechodí“ (5B). */
+      ucet: { select: { lastSeenAt: true } },
       /** Sloupec Platnost do (Jakub, 24. 9. 2026). */
       platnosti: { where: { validUntil: { not: null } }, select: { validUntil: true } },
+      /** Štítky pod jménem (Fáze 5B, 11. 10. 2026). */
+      stitky: {
+        where: { tag: { deletedAt: null } },
+        orderBy: { tag: { name: "asc" } },
+        select: { tag: { select: { id: true, name: true, color: true } } },
+      },
     },
   });
 
@@ -154,6 +206,16 @@ export async function nactiKlienty(viewer: Viewer, filtr: FiltrKlientu = {}) {
         platnost: shrnPlatnost(
           klient.platnosti.map((radek) => radek.validUntil!.getTime()),
           dnes,
+        ),
+        stitky: klient.stitky.map((vazba) => vazba.tag),
+        /** Platí, ale nechodí (Fáze 5B, 15. 10. 2026) — `src/lib/nechodi.ts`. */
+        nechodi: nechodi(
+          {
+            beziClenstvi: klient.platnosti.some((radek) => radek.validUntil!.getTime() >= dnes),
+            posledniNavsteva: klient.ucet?.lastSeenAt ?? null,
+            posledniPlatba: posledniPlatba(klient.orders),
+          },
+          hranice,
         ),
       }))
       /*
@@ -192,6 +254,26 @@ export async function pocetCekajicichNaPristup(viewer: Viewer): Promise<number> 
   });
 }
 
+/** Nejnovější zaplacení z objednávek klienta (smazané už dotaz vyřadil). */
+function posledniPlatba(objednavky: { status: string; paidAt: Date | null }[]): Date | null {
+  let posledni: Date | null = null;
+  for (const objednavka of objednavky) {
+    if (objednavka.status !== "ZAPLACENO" || !objednavka.paidAt) continue;
+    if (!posledni || objednavka.paidAt > posledni) posledni = objednavka.paidAt;
+  }
+  return posledni;
+}
+
+/**
+ * Kolik členů platí, ale nechodí (Fáze 5B, 15. 10. 2026) — upozornění nad
+ * seznamem klientů. Počítá se přes všechny viditelné klienty, ne jen přes
+ * vyhledané, stejně jako ostatní upozornění.
+ */
+export async function pocetNechodicich(viewer: Viewer): Promise<number> {
+  const { hranice } = await aktualniHraniceNechodi();
+  return db.client.count({ where: { AND: [viditelniKlienti(viewer), podminkaNechodi(hranice)] } });
+}
+
 /**
  * Kolik klientů má členství za sebou, ale přístup do programu povolený
  * (Jakub, 25. 9. 2026). Přístup se po konci sám nevypíná — tohle je
@@ -221,23 +303,14 @@ export async function pocetPoKonciSPristupem(viewer: Viewer): Promise<number> {
  *
  * Od 23. 9. 2026 (Jakub) karta ukazuje jen údaje, objednávky, přílohy
  * a poznámky — záložky Časová osa, Hovory, Portfolia a Úkoly zmizely,
- * takže se hovory, úkoly ani aktivity nenačítají. Portfolia jen kvůli
- * oddílu Brokeři ve formuláři Upravit (nabízí se ten, u koho klient
- * ještě portfolio nemá).
+ * takže se úkoly ani aktivity nenačítají. Brokeři u klienta zmizeli
+ * 20. 10. 2026 s portfolii.
  */
 export async function nactiKlienta(viewer: Viewer, id: string) {
   // Podmínka viditelnosti je součástí dotazu — klient mimo rozsah role
   // se nenajde, i když někdo zná jeho adresu.
   const klient = await db.client.findFirst({
     where: { AND: [{ id }, viditelniKlienti(viewer)] },
-    include: {
-      portfolios: {
-        // Broker v koši se u klienta neukazuje — v seznamech není.
-        where: { deletedAt: null, broker: { deletedAt: null } },
-        orderBy: { broker: { name: "asc" } },
-        select: { id: true, brokerId: true, currency: true, broker: { select: { name: true } } },
-      },
-    },
   });
 
   if (!klient) return null;
@@ -254,7 +327,6 @@ export async function nactiKlienta(viewer: Viewer, id: string) {
     /** Kvůli hlídání čerstvého odeslání do SmartEmailingu. */
     createdAt: klient.createdAt,
     consentMarketingAt: klient.consentMarketingAt,
-    consentRecordingAt: klient.consentRecordingAt,
     /** Kdy odešel do SmartEmailingu, nebo kód chyby, proč ne. */
     smartemailingSentAt: klient.smartemailingSentAt,
     smartemailingError: klient.smartemailingError,
@@ -269,14 +341,6 @@ export async function nactiKlienta(viewer: Viewer, id: string) {
     /** Brokeři, které klient uvedl při objednávce či na webu — jen informace (25. 9. 2026). */
     reportedBrokers: klient.reportedBrokers,
     brokersReportedAt: klient.brokersReportedAt,
-    /** Brokeři klienta — kvůli oddílu Brokeři ve formuláři Upravit (od 25. 9. 2026). */
-    brokeri: klient.portfolios.map((portfolio) => ({
-      portfolioId: portfolio.id,
-      nazev: portfolio.broker.name,
-      mena: portfolio.currency,
-    })),
-    /** U kterých brokerů už portfolio má — kvůli výběru ve formuláři. */
-    brokerIds: klient.portfolios.map((portfolio) => portfolio.brokerId),
   };
 }
 
@@ -455,55 +519,6 @@ export async function nactiPripominky(viewer: Viewer) {
   }));
 }
 
-/* ---------- Portfolia ---------- */
-
-export async function nactiPortfolia(viewer: Viewer) {
-  const portfolia = await db.portfolio.findMany({
-    where: viditelnaPortfolia(viewer),
-    orderBy: [{ client: { name: "asc" } }, { broker: { name: "asc" } }],
-    include: {
-      client: { select: { id: true, name: true } },
-      broker: { select: { name: true } },
-    },
-  });
-
-  return portfolia.map((portfolio) => ({
-    id: portfolio.id,
-    clientId: portfolio.client.id,
-    clientName: portfolio.client.name,
-    brokerName: portfolio.broker.name,
-    source: portfolio.source,
-    currency: portfolio.currency,
-    invested: cislo(portfolio.invested),
-    value: cislo(portfolio.value),
-    lastSyncAt: portfolio.lastSyncAt,
-  }));
-}
-
-export async function nactiPozice(viewer: Viewer) {
-  const pozice = await db.position.findMany({
-    where: { portfolio: viditelnaPortfolia(viewer) },
-    orderBy: [{ portfolio: { client: { name: "asc" } } }, { ticker: "asc" }],
-    include: {
-      portfolio: {
-        select: { currency: true, client: { select: { id: true, name: true } } },
-      },
-    },
-  });
-
-  return pozice.map((polozka) => ({
-    id: polozka.id,
-    ticker: polozka.ticker,
-    name: polozka.name,
-    clientId: polozka.portfolio.client.id,
-    clientName: polozka.portfolio.client.name,
-    currency: polozka.portfolio.currency,
-    quantity: cislo(polozka.quantity),
-    averagePrice: cislo(polozka.averagePrice),
-    currentPrice: cislo(polozka.currentPrice),
-  }));
-}
-
 /* ---------- Zdroje klientů ---------- */
 
 /**
@@ -674,18 +689,6 @@ async function objednavkyZaObdobi(
   }));
 }
 
-interface HovorProSoucet {
-  at: Date;
-  outcome: CallOutcome;
-}
-
-async function hovoryZaObdobi(viewer: Viewer, od: Date, doKdy: Date): Promise<HovorProSoucet[]> {
-  return db.call.findMany({
-    where: { client: viditelniKlienti(viewer), at: { gte: od, lt: doKdy }, deletedAt: null },
-    select: { at: true, outcome: true },
-  });
-}
-
 /**
  * Tři čísla nahoře na Dashboardu. Počítají se stejně pro obě období, ať jdou srovnat.
  *
@@ -698,14 +701,12 @@ export interface SouhrnObdobi {
   objednavky: number;
   /** Hodnota případů bez DPH. */
   hodnota: number;
-  hovory: number;
 }
 
-function souhrn(objednavky: ObjednavkaProSoucet[], hovory: HovorProSoucet[]): SouhrnObdobi {
+function souhrn(objednavky: ObjednavkaProSoucet[]): SouhrnObdobi {
   return {
     objednavky: objednavky.length,
     hodnota: objednavky.reduce((soucet, objednavka) => soucet + objednavka.hodnota, 0),
-    hovory: hovory.length,
   };
 }
 
@@ -714,8 +715,7 @@ export interface DashboardData {
   /** Stejně dlouhý úsek těsně před obdobím — jen pro srovnání u dlaždic. */
   minulost: SouhrnObdobi;
   /** Vývoj v čase. Jeden bod na den, týden nebo měsíc podle délky období. */
-  vyvoj: { klic: string; popisek: string; hodnota: number; objednavky: number; hovory: number }[];
-  hovoryPodleVysledku: { outcome: CallOutcome; label: string; pocet: number }[];
+  vyvoj: { klic: string; popisek: string; hodnota: number; objednavky: number }[];
   objednavkyPodleStavu: { status: OrderStatus; label: string; pocet: number; hodnota: number }[];
   /** Klienti založení v období podle toho, odkud se o nás dozvěděli. */
   podleZdroje: { label: string; pocet: number }[];
@@ -724,29 +724,26 @@ export interface DashboardData {
 export async function nactiDashboard(viewer: Viewer, obdobi: Obdobi): Promise<DashboardData> {
   const krok = krokProObdobi(obdobi.dnu);
 
-  const [objednavky, hovory, minuleObjednavky, minuleHovory, noviKlienti, zdroje] =
-    await Promise.all([
-      objednavkyZaObdobi(viewer, obdobi.od, obdobi.do),
-      hovoryZaObdobi(viewer, obdobi.od, obdobi.do),
-      objednavkyZaObdobi(viewer, obdobi.predchoziOd, obdobi.predchoziDo),
-      hovoryZaObdobi(viewer, obdobi.predchoziOd, obdobi.predchoziDo),
-      // Noví klienti podle zdroje — v rozsahu role, stejně jako všechno ostatní.
-      db.client.groupBy({
-        by: ["sourceId"],
-        where: {
-          AND: [viditelniKlienti(viewer), { createdAt: { gte: obdobi.od, lt: obdobi.do } }],
-        },
-        _count: { _all: true },
-      }),
-      db.clientSource.findMany({ select: { id: true, name: true } }),
-    ]);
+  const [objednavky, minuleObjednavky, noviKlienti, zdroje] = await Promise.all([
+    objednavkyZaObdobi(viewer, obdobi.od, obdobi.do),
+    objednavkyZaObdobi(viewer, obdobi.predchoziOd, obdobi.predchoziDo),
+    // Noví klienti podle zdroje — v rozsahu role, stejně jako všechno ostatní.
+    db.client.groupBy({
+      by: ["sourceId"],
+      where: {
+        AND: [viditelniKlienti(viewer), { createdAt: { gte: obdobi.od, lt: obdobi.do } }],
+      },
+      _count: { _all: true },
+    }),
+    db.clientSource.findMany({ select: { id: true, name: true } }),
+  ]);
 
   // --- Vývoj v čase -----------------------------------------------------
   // Sloupce se předpřipraví na celé období, i ty prázdné. Bez toho by
   // graf v tichém týdnu jen přeskočil a vypadalo by to, že se nic nestalo.
-  const kbelik = new Map<string, { hodnota: number; objednavky: number; hovory: number }>();
+  const kbelik = new Map<string, { hodnota: number; objednavky: number }>();
   for (const zacatek of krokyObdobi(obdobi, krok)) {
-    kbelik.set(jakoDen(zacatek), { hodnota: 0, objednavky: 0, hovory: 0 });
+    kbelik.set(jakoDen(zacatek), { hodnota: 0, objednavky: 0 });
   }
 
   for (const objednavka of objednavky) {
@@ -757,12 +754,6 @@ export async function nactiDashboard(viewer: Viewer, obdobi: Obdobi): Promise<Da
     radek.objednavky += 1;
   }
 
-  for (const hovor of hovory) {
-    const klic = jakoDen(zacatekKroku(hovor.at, krok));
-    const radek = kbelik.get(klic);
-    if (radek) radek.hovory += 1;
-  }
-
   const vyvoj = [...kbelik.entries()].map(([klic, radek]) => ({
     klic,
     popisek: popisekKroku(klic, krok),
@@ -770,12 +761,6 @@ export async function nactiDashboard(viewer: Viewer, obdobi: Obdobi): Promise<Da
   }));
 
   // --- Rozpady ----------------------------------------------------------
-  const hovoryPodleVysledku = CALL_OUTCOMES.map((vysledek) => ({
-    outcome: vysledek,
-    label: OUTCOME_LABEL[vysledek],
-    pocet: hovory.filter((hovor) => hovor.outcome === vysledek).length,
-  }));
-
   const objednavkyPodleStavu = ORDER_STATUSES.map((stav) => {
     const vlastni = objednavky.filter((objednavka) => objednavka.status === stav.id);
     return {
@@ -787,10 +772,9 @@ export async function nactiDashboard(viewer: Viewer, obdobi: Obdobi): Promise<Da
   });
 
   return {
-    soucasnost: souhrn(objednavky, hovory),
-    minulost: souhrn(minuleObjednavky, minuleHovory),
+    soucasnost: souhrn(objednavky),
+    minulost: souhrn(minuleObjednavky),
     vyvoj,
-    hovoryPodleVysledku,
     objednavkyPodleStavu,
     podleZdroje: noviKlienti
       .map((skupina) => ({
@@ -807,7 +791,7 @@ export async function nactiDashboard(viewer: Viewer, obdobi: Obdobi): Promise<Da
  * Tým, jak se ukazuje ve Správě.
  *
  * Účty v koši (`deletedAt`) tu nejsou — jsou vidět jen v samotném koši.
- * Řádek jim v databázi zůstává, aby jejich klienti, hovory i auditní
+ * Řádek jim v databázi zůstává, aby jejich úkoly, poznámky i auditní
  * stopa měly na koho ukazovat.
  */
 export async function nactiUzivatele() {
@@ -956,6 +940,22 @@ export interface ObjednavkaKZobrazeni {
   }[];
   /** Kdy klient objednávku uhradil. Podle něj se počítají tržby v Cílech. */
   paidAt: Date | null;
+  /** Platba přes bránu GoPay (19. 10. 2026), nebo `null`. */
+  platba: { id: string; vracena: boolean } | null;
+  /** Faktura a dobropis (19. 10. 2026). */
+  faktury: { id: string; number: string; kind: "FAKTURA" | "DOBROPIS" }[];
+  /**
+   * Slevový kód (Fáze 5A, 14. 10. 2026) a kolik ubral — bez DPH i s DPH.
+   * `hodnota` a `hodnotaSDph` jsou už po slevě. `null` = bez kódu.
+   */
+  sleva: { kod: string; bezDph: number; sDph: number } | null;
+  /**
+   * Poslední připomínka platby klientovi (Fáze 5A, 11. 10. 2026): kolikátá,
+   * kdy a jak dorazila. `null` = žádná neodešla. Vidí každý přihlášený.
+   */
+  pripominka: { pocet: number; kdy: Date; doruceni: string | null } | null;
+  /** Objednávku založil klient sám v klientské části (Koupit, 20. 10. 2026). */
+  zKlientskeCasti: boolean;
   /** Čas objednávky — kdy ji klient vytvořil. V tabulce se ukazuje i s časem. */
   createdAt: Date;
   updatedAt: Date;
@@ -973,6 +973,16 @@ export async function nactiObjednavky(
     orderBy: [{ createdAt: "desc" }],
     include: {
       client: { select: { id: true, name: true } },
+      discountCode: { select: { code: true } },
+      // Faktura a dobropis (19. 10. 2026).
+      faktury: { orderBy: { issuedAt: "asc" }, select: { id: true, number: true, kind: true } },
+      // Platba přes bránu (19. 10. 2026) — poslední zaplacená nebo vrácená.
+      platby: {
+        where: { state: { in: ["PAID", "REFUNDED"] } },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { id: true, state: true, refundedAt: true },
+      },
       items: {
         orderBy: { product: { name: "asc" } },
         include: {
@@ -1005,6 +1015,20 @@ export async function nactiObjednavky(
       cenaSDph: cenaPolozkySDph(polozka),
     }));
 
+    // Kolik ubral slevový kód: rozdíl proti ceníkové ceně ze chvíle objednávky.
+    const sleva = objednavka.items.reduce(
+      (soucet, polozka) => {
+        if (!polozka.listNetPrice) return soucet;
+        const pred = polozka.listNetPrice.toNumber();
+        const sazba = polozka.vatPercent?.toNumber() ?? 0;
+        return {
+          bezDph: soucet.bezDph + polozka.quantity * (pred - cenaPolozkyBezDph(polozka)),
+          sDph: soucet.sDph + polozka.quantity * (sDph(pred, sazba) - cenaPolozkySDph(polozka)),
+        };
+      },
+      { bezDph: 0, sDph: 0 },
+    );
+
     return {
       id: objednavka.id,
       number: objednavka.number,
@@ -1017,7 +1041,26 @@ export async function nactiObjednavky(
       hodnota: produkty.reduce((soucet, p) => soucet + p.quantity * p.cenaBezDph, 0),
       hodnotaSDph: produkty.reduce((soucet, p) => soucet + p.quantity * p.cenaSDph, 0),
       produkty,
+      pripominka: objednavka.paymentRemindedAt
+        ? {
+            pocet: objednavka.paymentReminders,
+            kdy: objednavka.paymentRemindedAt,
+            doruceni: objednavka.paymentReminderDelivery,
+          }
+        : null,
       paidAt: objednavka.paidAt,
+      zKlientskeCasti: objednavka.channel === "KLIENTSKA_CAST",
+      faktury: objednavka.faktury,
+      platba: objednavka.platby[0]
+        ? { id: objednavka.platby[0].id, vracena: objednavka.platby[0].refundedAt !== null }
+        : null,
+      sleva: objednavka.discountCode
+        ? {
+            kod: objednavka.discountCode.code,
+            bezDph: Math.round(sleva.bezDph * 100) / 100,
+            sDph: Math.round(sleva.sDph * 100) / 100,
+          }
+        : null,
       createdAt: objednavka.createdAt,
       updatedAt: objednavka.updatedAt,
     };
@@ -1068,122 +1111,4 @@ export async function nactiKlientyProVyber(viewer: Viewer) {
     orderBy: { name: "asc" },
     select: { id: true, name: true },
   });
-}
-
-/* ---------- Hovory ---------- */
-
-/** Jeden řádek tabulky hovorů. */
-export interface HovorKZobrazeni {
-  id: string;
-  at: Date;
-  durationMin: number;
-  outcome: CallOutcome;
-  note: string;
-  /** Kdo hovor zapsal. Podle toho se rozhoduje, kdo smí přepsat poznámku. */
-  userId: string;
-  userName: string;
-  clientId: string;
-  clientName: string;
-  /** Případ, kterého se hovor týkal. Odložený případ se neukazuje. */
-  orderId: string | null;
-  /** Číslo objednávky (od 24. 9. 2026 místo názvu). */
-  orderNumber: string | null;
-  productName: string | null;
-}
-
-/** Co si člověk vyplnil ve filtrech nad hovory. */
-export interface FiltrHovoru {
-  /** Jméno klienta, název objednávky nebo text poznámky. */
-  hledat?: string;
-  vysledek?: CallOutcome;
-  /** Hovory jednoho člověka — podle toho, **kdo je zapsal**. */
-  uzivatelId?: string;
-  /** Rozsah dat, oboje včetně. Přichází z polí typu datum. */
-  od?: Date;
-  do?: Date;
-}
-
-/**
- * Filtry přeložené do podmínek dotazu.
- *
- * **Filtr nikdy rozsah nerozšíří, jen zúží** — skládá se s podmínkou
- * viditelnosti přes `AND`.
- */
-function podleFiltruHovoru(filtr: FiltrHovoru): Prisma.CallWhereInput[] {
-  const podminky: Prisma.CallWhereInput[] = [];
-
-  const hledat = filtr.hledat?.trim();
-  if (hledat) {
-    // Prisma skládá dotaz parametrizovaně, řetězec se nikam nevlepuje
-    // (security_warnings.md, pravidlo 11).
-    podminky.push({
-      OR: [
-        { client: { name: { contains: hledat, mode: "insensitive" } } },
-        { order: { name: { contains: hledat, mode: "insensitive" } } },
-        { note: { contains: hledat, mode: "insensitive" } },
-      ],
-    });
-  }
-
-  if (filtr.vysledek) podminky.push({ outcome: filtr.vysledek });
-
-  // Kdo hovor zapsal. Je to autorství, ne vlastnictví klienta —
-  // filtr proto zůstal i potom, co se klienti přestali přiřazovat.
-  if (filtr.uzivatelId) podminky.push({ userId: filtr.uzivatelId });
-
-  if (filtr.od) podminky.push({ at: { gte: filtr.od } });
-  if (filtr.do) podminky.push({ at: { lt: filtr.do } });
-
-  return podminky;
-}
-
-/**
- * Hovory pro obrazovku Hovory.
- *
- * **Omezení je v dotazu:** obchodník dostane hovory jen u klientů, které
- * má přiřazené, manažer a administrátor všechny (Jakub, 9. 9. 2026).
- * Hovory v koši se nezobrazují nikde kromě Smazaných.
- *
- * Tentýž dotaz plní tabulku i export do CSV — soubor tak nikdy neobsahuje
- * víc, než co má člověk na obrazovce.
- */
-export async function nactiHovory(
-  viewer: Viewer,
-  filtr: FiltrHovoru = {},
-): Promise<HovorKZobrazeni[]> {
-  const hovory = await db.call.findMany({
-    where: {
-      AND: [{ deletedAt: null, client: viditelniKlienti(viewer) }, ...podleFiltruHovoru(filtr)],
-    },
-    orderBy: { at: "desc" },
-    select: {
-      id: true,
-      at: true,
-      durationMin: true,
-      outcome: true,
-      note: true,
-      userId: true,
-      user: { select: { name: true } },
-      client: { select: { id: true, name: true } },
-      order: { select: { id: true, number: true, deletedAt: true } },
-      interestProduct: { select: { name: true } },
-    },
-  });
-
-  return hovory.map((hovor) => ({
-    id: hovor.id,
-    at: hovor.at,
-    durationMin: hovor.durationMin,
-    outcome: hovor.outcome,
-    note: hovor.note,
-    userId: hovor.userId,
-    userName: hovor.user.name,
-    clientId: hovor.client.id,
-    clientName: hovor.client.name,
-    // Případ odložený do koše se nikde nezobrazuje. Vazba v databázi
-    // zůstává, takže se po obnovení případu zase objeví.
-    orderId: hovor.order && !hovor.order.deletedAt ? hovor.order.id : null,
-    orderNumber: hovor.order && !hovor.order.deletedAt ? hovor.order.number : null,
-    productName: hovor.interestProduct?.name ?? null,
-  }));
 }

@@ -91,6 +91,8 @@
   --color-pristup-ne-foreground: var(--pristup-ne-foreground);
   --color-konec-clenstvi: var(--konec-clenstvi);
   --color-konec-clenstvi-foreground: var(--konec-clenstvi-foreground);
+  --color-qr-pozadi: var(--qr-pozadi);
+  --color-qr-popredi: var(--qr-popredi);
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
@@ -224,6 +226,14 @@
    */
   --konec-clenstvi: oklch(95% 0.06 85);
   --konec-clenstvi-foreground: oklch(43% 0.1 65);
+
+  /*
+   * QR platba (Jakub, 20. 10. 2026): vždy tmavé moduly na bílém, i v tmavém
+   * vzhledu — obrácený QR kód řada bankovních aplikací nepřečte. Proto
+   * ho tmavý režim nepřepisuje.
+   */
+  --qr-pozadi: oklch(100% 0 0);
+  --qr-popredi: oklch(0% 0 0);
 }
 
 /*

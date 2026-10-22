@@ -17,6 +17,7 @@ build
 # Snímky ze zkoušek (data z vývojové databáze) a nastavení nástrojů
 snimky
 zalohy
+databaze-projektu
 e2e/.stav
 e2e/vysledky
 e2e/zprava
@@ -40,3 +41,6 @@ compose.yaml
 # Logy
 *.log
 npm-debug.log*
+
+# Případová studie je samostatná statická stránka (Cloudflare Pages), do aplikace nepatří.
+pripadova-studie

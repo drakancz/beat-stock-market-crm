@@ -5,9 +5,11 @@ import { z } from "zod";
 
 import { zapisDoAuditu } from "@/lib/audit";
 import { db } from "@/lib/db";
-import { pocet } from "@/lib/mnozne";
+import { prepocitejOdmenu } from "@/lib/doporuceni";
+import { stitekPoZaplaceni } from "@/lib/pravidla";
 import { prepocitejPlatnost } from "@/lib/platnost";
 import { requireAdmin } from "@/lib/session";
+import { jeUkazkovyTym, VYPNUTO_V_UKAZCE } from "@/lib/ukazka";
 
 import { DRUHY } from "./druhy";
 
@@ -40,8 +42,9 @@ function obnovStranky() {
   revalidatePath("/smazane");
   revalidatePath("/klienti");
   revalidatePath("/objednavky");
-  revalidatePath("/portfolia");
   revalidatePath("/produkty");
+  revalidatePath("/produkty/slevove-kody");
+  revalidatePath("/produkty/doporucitele");
   revalidatePath("/brokeri");
   revalidatePath("/sprava");
   revalidatePath("/sprava/uzivatele");
@@ -55,6 +58,10 @@ export async function obnovZaznam(druhRaw: string, idRaw: string): Promise<Vysle
   if (!data.success) return { ok: false, chyba: "Neplatný požadavek." };
 
   const { druh, id } = data.data;
+  // Na účty týmu ukázkový účet nesahá (src/lib/ukazka.ts).
+  if (druh === "uzivatel" && jeUkazkovyTym(admin.email)) {
+    return { ok: false, chyba: VYPNUTO_V_UKAZCE };
+  }
 
   switch (druh) {
     case "klient": {
@@ -112,6 +119,10 @@ export async function obnovZaznam(druhRaw: string, idRaw: string): Promise<Vysle
         if (objednavka.status === "ZAPLACENO") {
           await prepocitejPlatnost(tx, objednavka.clientId);
         }
+        // Vrácená zaplacená objednávka doporučiteli zase odměnu má (5A).
+        await prepocitejOdmenu(tx, id, admin.id);
+        // A pravidlo Zaplaceno → štítek (5D), když ho klient ještě nedostal.
+        await stitekPoZaplaceni(tx, id);
         await zapisDoAuditu(tx, {
           userId: admin.id,
           entity: "orders",
@@ -127,64 +138,6 @@ export async function obnovZaznam(druhRaw: string, idRaw: string): Promise<Vysle
 
       obnovStranky();
       return { ok: true, zprava: `Zpátky mezi objednávkami: ${objednavka.number}.` };
-    }
-
-    case "hovor": {
-      const hovor = await db.call.findUnique({
-        where: { id },
-        select: {
-          id: true,
-          at: true,
-          outcome: true,
-          deletedAt: true,
-          client: { select: { name: true } },
-        },
-      });
-      if (!hovor?.deletedAt) return { ok: false, chyba: "Tenhle hovor v koši není." };
-
-      await db.$transaction(async (tx) => {
-        await tx.call.update({ where: { id }, data: { deletedAt: null } });
-        await zapisDoAuditu(tx, {
-          userId: admin.id,
-          entity: "calls",
-          entityId: id,
-          action: "hovor.obnoven",
-          after: { klient: hovor.client.name, at: hovor.at.toISOString(), vysledek: hovor.outcome },
-        });
-      });
-
-      obnovStranky();
-      return { ok: true, zprava: `Hovor s klientem ${hovor.client.name} je zpátky.` };
-    }
-
-    case "portfolio": {
-      const portfolio = await db.portfolio.findUnique({
-        where: { id },
-        select: {
-          id: true,
-          deletedAt: true,
-          client: { select: { name: true } },
-          broker: { select: { name: true } },
-        },
-      });
-      if (!portfolio?.deletedAt) return { ok: false, chyba: "Tohle portfolio v koši není." };
-
-      await db.$transaction(async (tx) => {
-        await tx.portfolio.update({ where: { id }, data: { deletedAt: null } });
-        await zapisDoAuditu(tx, {
-          userId: admin.id,
-          entity: "portfolios",
-          entityId: id,
-          action: "portfolio.obnoveno",
-          after: { klient: portfolio.client.name, broker: portfolio.broker.name },
-        });
-      });
-
-      obnovStranky();
-      return {
-        ok: true,
-        zprava: `Portfolio ${portfolio.client.name} u ${portfolio.broker.name} je zpátky.`,
-      };
     }
 
     case "produkt": {
@@ -220,6 +173,51 @@ export async function obnovZaznam(druhRaw: string, idRaw: string): Promise<Vysle
 
       obnovStranky();
       return { ok: true, zprava: `Zpátky v ceníku: ${produkt.name}.` };
+    }
+
+    case "slevovy-kod": {
+      const kod = await db.discountCode.findUnique({
+        where: { id },
+        select: { id: true, code: true, deletedAt: true },
+      });
+      if (!kod?.deletedAt) return { ok: false, chyba: "Tenhle slevový kód v koši není." };
+
+      // Kód je jedinečný i proti smazaným, takže kolize s novým nehrozí.
+      await db.$transaction(async (tx) => {
+        await tx.discountCode.update({ where: { id }, data: { deletedAt: null } });
+        await zapisDoAuditu(tx, {
+          userId: admin.id,
+          entity: "discount_codes",
+          entityId: id,
+          action: "slevovy-kod.obnoven",
+          after: { code: kod.code },
+        });
+      });
+
+      obnovStranky();
+      return { ok: true, zprava: `Slevový kód ${kod.code} zase platí.` };
+    }
+
+    case "doporucitel": {
+      const doporucitel = await db.referrer.findUnique({
+        where: { id },
+        select: { id: true, name: true, deletedAt: true },
+      });
+      if (!doporucitel?.deletedAt) return { ok: false, chyba: "Tenhle doporučitel v koši není." };
+
+      await db.$transaction(async (tx) => {
+        await tx.referrer.update({ where: { id }, data: { deletedAt: null } });
+        await zapisDoAuditu(tx, {
+          userId: admin.id,
+          entity: "referrers",
+          entityId: id,
+          action: "doporucitel.obnoven",
+          after: { name: doporucitel.name },
+        });
+      });
+
+      obnovStranky();
+      return { ok: true, zprava: `${doporucitel.name} je zpátky mezi doporučiteli.` };
     }
 
     case "broker": {
@@ -280,6 +278,10 @@ export async function smazZaznamNadobro(druhRaw: string, idRaw: string): Promise
   if (!data.success) return { ok: false, chyba: "Neplatný požadavek." };
 
   const { druh, id } = data.data;
+  // Na účty týmu ukázkový účet nesahá (src/lib/ukazka.ts).
+  if (druh === "uzivatel" && jeUkazkovyTym(admin.email)) {
+    return { ok: false, chyba: VYPNUTO_V_UKAZCE };
+  }
 
   switch (druh) {
     case "klient": {
@@ -293,15 +295,15 @@ export async function smazZaznamNadobro(druhRaw: string, idRaw: string): Promise
           mergedIntoId: true,
           _count: {
             select: {
-              calls: true,
               tasks: true,
-              portfolios: true,
               activities: true,
               orders: true,
               // Zprávy do klientské části (3A, 4. 10. 2026) jsou historie.
               zpravy: true,
               // Účast na webinářích (3C) je taky historie.
               ucastNaWebinarich: true,
+              // Rezervace konzultací (5B, 19. 10. 2026) taky.
+              rezervace: true,
             },
           },
         },
@@ -316,20 +318,18 @@ export async function smazZaznamNadobro(druhRaw: string, idRaw: string): Promise
         };
       }
 
-      const { calls, tasks, portfolios, activities, orders, zpravy, ucastNaWebinarich } =
-        klient._count;
+      const { tasks, activities, orders, zpravy, ucastNaWebinarich, rezervace } = klient._count;
       if (
-        calls > 0 ||
         tasks > 0 ||
-        portfolios > 0 ||
         activities > 0 ||
         orders > 0 ||
         zpravy > 0 ||
-        ucastNaWebinarich > 0
+        ucastNaWebinarich > 0 ||
+        rezervace > 0
       ) {
         return {
           ok: false,
-          chyba: `${klient.name} má v systému historii (objednávky, hovory, úkoly, portfolia, zprávy nebo účast na webinářích). Nadobro smazat nejde — v koši zůstat může.`,
+          chyba: `${klient.name} má v systému historii (objednávky, úkoly, zprávy, účast na webinářích nebo rezervace konzultací). Nadobro smazat nejde — v koši zůstat může.`,
         };
       }
 
@@ -358,12 +358,22 @@ export async function smazZaznamNadobro(druhRaw: string, idRaw: string): Promise
           status: true,
           deletedAt: true,
           client: { select: { name: true } },
+          odmena: { select: { id: true } },
           _count: { select: { items: true } },
         },
       });
       if (!objednavka?.deletedAt) return { ok: false, chyba: "Tahle objednávka v koši není." };
 
-      // Objednávka se maže vždycky: nic na ní nevisí a objednané produkty
+      // Na objednávce v koši může viset jen vyplacená odměna doporučiteli
+      // (nevyplacená zmizí už smazáním) — a ta je doklad o odeslaných penězích.
+      if (objednavka.odmena) {
+        return {
+          ok: false,
+          chyba: `Z objednávky ${objednavka.number} je vyplacená odměna doporučiteli. Nadobro smazat nejde — v koši zůstat může.`,
+        };
+      }
+
+      // Jinak se objednávka maže vždycky: objednané produkty
       // mizí s ní (v databázi to zařídí kaskáda). Stopa po ní zůstane
       // v auditním logu, takže historie o nic nepřijde.
       await db.$transaction(async (tx) => {
@@ -387,81 +397,6 @@ export async function smazZaznamNadobro(druhRaw: string, idRaw: string): Promise
       return { ok: true, zprava: `Nadobro smazáno: objednávka ${objednavka.number}.` };
     }
 
-    case "hovor": {
-      const hovor = await db.call.findUnique({
-        where: { id },
-        select: {
-          id: true,
-          at: true,
-          durationMin: true,
-          outcome: true,
-          note: true,
-          deletedAt: true,
-          client: { select: { name: true } },
-          user: { select: { name: true } },
-        },
-      });
-      if (!hovor?.deletedAt) return { ok: false, chyba: "Tenhle hovor v koši není." };
-
-      // Hovor se maže vždycky: nic na něm nevisí. Stopa po něm zůstane
-      // v auditním logu, takže historie o nic nepřijde. Text poznámky
-      // se do logu nedává ani tady — bývá o tom, co klient řekl
-      // (security_warnings.md, pravidlo 8).
-      await db.$transaction(async (tx) => {
-        await zapisDoAuditu(tx, {
-          userId: admin.id,
-          entity: "calls",
-          entityId: id,
-          action: "hovor.smazan",
-          before: {
-            klient: hovor.client.name,
-            zapsal: hovor.user.name,
-            at: hovor.at.toISOString(),
-            minut: hovor.durationMin,
-            vysledek: hovor.outcome,
-            maPoznamku: hovor.note.length > 0,
-          },
-        });
-        await tx.call.delete({ where: { id } });
-      });
-
-      obnovStranky();
-      return { ok: true, zprava: `Hovor s klientem ${hovor.client.name} je nadobro smazaný.` };
-    }
-
-    case "portfolio": {
-      const portfolio = await db.portfolio.findUnique({
-        where: { id },
-        select: {
-          id: true,
-          deletedAt: true,
-          client: { select: { name: true } },
-          broker: { select: { name: true } },
-          _count: { select: { positions: true } },
-        },
-      });
-      if (!portfolio?.deletedAt) return { ok: false, chyba: "Tohle portfolio v koši není." };
-
-      await db.$transaction(async (tx) => {
-        await zapisDoAuditu(tx, {
-          userId: admin.id,
-          entity: "portfolios",
-          entityId: id,
-          action: "portfolio.smazano",
-          before: {
-            klient: portfolio.client.name,
-            broker: portfolio.broker.name,
-            pozic: portfolio._count.positions,
-          },
-        });
-        // Pozice v portfoliu mizí s ním — v databázi to zařídí kaskáda.
-        await tx.portfolio.delete({ where: { id } });
-      });
-
-      obnovStranky();
-      return { ok: true, zprava: `Portfolio ${portfolio.client.name} je nadobro smazané.` };
-    }
-
     case "produkt": {
       const produkt = await db.product.findUnique({
         where: { id },
@@ -470,18 +405,18 @@ export async function smazZaznamNadobro(druhRaw: string, idRaw: string): Promise
           name: true,
           kind: true,
           deletedAt: true,
-          _count: { select: { orders: true, calls: true, platnosti: true, kurzy: true } },
+          _count: { select: { orders: true, platnosti: true, kurzy: true } },
         },
       });
       if (!produkt?.deletedAt) return { ok: false, chyba: "Tenhle produkt v koši není." };
 
-      // Objednávky, platnost členství i hovory na produkt odkazují. Kdyby
+      // Objednávky a platnost členství na produkt odkazují. Kdyby
       // zmizel, z historie by se ztratilo, co si klient koupil.
-      const { orders, calls, platnosti, kurzy } = produkt._count;
-      if (orders > 0 || calls > 0 || platnosti > 0 || kurzy > 0) {
+      const { orders, platnosti, kurzy } = produkt._count;
+      if (orders > 0 || platnosti > 0 || kurzy > 0) {
         return {
           ok: false,
-          chyba: `${produkt.name} je v objednávkách, platnosti členství, u hovoru nebo má obsah kurzu ve Vzdělávání. Nadobro smazat nejde — v koši zůstat může.`,
+          chyba: `${produkt.name} je v objednávkách, platnosti členství nebo má obsah kurzu ve Vzdělávání. Nadobro smazat nejde — v koši zůstat může.`,
         };
       }
 
@@ -500,6 +435,73 @@ export async function smazZaznamNadobro(druhRaw: string, idRaw: string): Promise
       return { ok: true, zprava: `Nadobro smazáno: ${produkt.name}.` };
     }
 
+    case "slevovy-kod": {
+      const kod = await db.discountCode.findUnique({
+        where: { id },
+        select: { id: true, code: true, deletedAt: true, _count: { select: { objednavky: true } } },
+      });
+      if (!kod?.deletedAt) return { ok: false, chyba: "Tenhle slevový kód v koši není." };
+
+      // Objednávky na kód odkazují — z historie by se ztratilo, odkud je sleva.
+      if (kod._count.objednavky > 0) {
+        return {
+          ok: false,
+          chyba: `${kod.code} je u objednávek. Nadobro smazat nejde — v koši zůstat může.`,
+        };
+      }
+
+      await db.$transaction(async (tx) => {
+        await zapisDoAuditu(tx, {
+          userId: admin.id,
+          entity: "discount_codes",
+          entityId: id,
+          action: "slevovy-kod.smazan",
+          before: { code: kod.code },
+        });
+        await tx.discountCode.delete({ where: { id } });
+      });
+
+      obnovStranky();
+      return { ok: true, zprava: `Nadobro smazáno: ${kod.code}.` };
+    }
+
+    case "doporucitel": {
+      const doporucitel = await db.referrer.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          name: true,
+          deletedAt: true,
+          _count: { select: { kody: true, privedeni: true, objednavky: true, odmeny: true } },
+        },
+      });
+      if (!doporucitel?.deletedAt) return { ok: false, chyba: "Tenhle doporučitel v koši není." };
+
+      // Přivedení klienti a odměny jsou historie — kdo koho přivedl a komu
+      // se co vyplatilo, se nesmí ztratit.
+      const { kody, privedeni, objednavky, odmeny } = doporucitel._count;
+      if (kody > 0 || privedeni > 0 || objednavky > 0 || odmeny > 0) {
+        return {
+          ok: false,
+          chyba: `${doporucitel.name} má kódy, přivedené klienty nebo odměny. Nadobro smazat nejde — v koši zůstat může.`,
+        };
+      }
+
+      await db.$transaction(async (tx) => {
+        await zapisDoAuditu(tx, {
+          userId: admin.id,
+          entity: "referrers",
+          entityId: id,
+          action: "doporucitel.smazan",
+          before: { name: doporucitel.name },
+        });
+        await tx.referrer.delete({ where: { id } });
+      });
+
+      obnovStranky();
+      return { ok: true, zprava: `Nadobro smazáno: ${doporucitel.name}.` };
+    }
+
     case "broker": {
       const broker = await db.broker.findUnique({
         where: { id },
@@ -508,17 +510,9 @@ export async function smazZaznamNadobro(druhRaw: string, idRaw: string): Promise
           name: true,
           autoConnect: true,
           deletedAt: true,
-          _count: { select: { portfolios: true } },
         },
       });
       if (!broker?.deletedAt) return { ok: false, chyba: "Tenhle broker v koši není." };
-
-      if (broker._count.portfolios > 0) {
-        return {
-          ok: false,
-          chyba: `${broker.name} je použitý u ${pocet(broker._count.portfolios, "portfolia", "portfolií", "portfolií")}. Nadobro smazat nejde — v koši zůstat může.`,
-        };
-      }
 
       // Objednávky se tu odbavovat nemusí: broker se u objednávky vede
       // od 22. 9. 2026 vůbec, takže ji nic nedrží.
@@ -548,7 +542,7 @@ export async function smazZaznamNadobro(druhRaw: string, idRaw: string): Promise
           role: true,
           deletedAt: true,
           _count: {
-            select: { calls: true, tasks: true, auditLog: true, events: true },
+            select: { tasks: true, auditLog: true, events: true },
           },
         },
       });
@@ -559,8 +553,8 @@ export async function smazZaznamNadobro(druhRaw: string, idRaw: string): Promise
       // Aktivita se počítá do historie: kdo se přihlásil a díval se na
       // klienty, po sobě stopu nechal. Nadobro jde smazat jen účet, který
       // se nikdy nepřihlásil — typicky překlep v e-mailu.
-      const { calls, tasks, auditLog, events } = uzivatel._count;
-      if (calls > 0 || tasks > 0 || auditLog > 0 || events > 0) {
+      const { tasks, auditLog, events } = uzivatel._count;
+      if (tasks > 0 || auditLog > 0 || events > 0) {
         return {
           ok: false,
           chyba: `${uzivatel.name} po sobě v systému něco nechal. Nadobro smazat nejde — v koši zůstat může.`,

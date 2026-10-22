@@ -48,7 +48,7 @@ export default async function DuplicityPage() {
           <CardTitle>Dvojice k rozhodnutí</CardTitle>
           <CardDescription>
             {viewer.role === "ADMINISTRATOR"
-              ? "Sloučit přesune objednávky, poznámky, hovory, úkoly i přílohy na jednu kartu. Když jde o dva různé lidi, dej Nejsou stejný člověk a návrh zmizí."
+              ? "Sloučit přesune objednávky, poznámky, úkoly i přílohy na jednu kartu. Když jde o dva různé lidi, dej Nejsou stejný člověk a návrh zmizí."
               : "Když jde o dva různé lidi, dej Nejsou stejný člověk a návrh zmizí. Sloučit karty může administrátor."}
           </CardDescription>
         </CardHeader>

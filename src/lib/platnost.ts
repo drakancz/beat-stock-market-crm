@@ -1,7 +1,5 @@
-import { zapisDoAuditu, type Transakce } from "@/lib/audit";
-import { db } from "@/lib/db";
-import { formatDatum } from "@/lib/format";
-import { dnesVPraze, jakoDen, posunDne, zacatekDne } from "@/lib/obdobi";
+import type { Transakce } from "@/lib/audit";
+import { dnesVPraze, jakoDen, zacatekDne } from "@/lib/obdobi";
 
 /**
  * Platnost produktů — do kdy klientovi běží členství (Jakub, 24. 9. 2026).
@@ -16,10 +14,8 @@ import { dnesVPraze, jakoDen, posunDne, zacatekDne } from "@/lib/obdobi";
  *    Víc kusů = víc období za sebou.
  * 3. **Ruční úprava konce je jen pro administrátora** — přebije platby
  *    před sebou, na platby po ní se navazuje.
- * 4. **Úkol „zavolat kvůli prodloužení" dostane jeden člověk** z Nastavení
- *    → Prodloužení, ve chvíli, kdy je do konce míň dní, než je tam
- *    nastavené. Dřív ne — Můj den ukazuje všechny nehotové úkoly, takže
- *    by tam visel rok dopředu.
+ * 4. Úkol „zavolat kvůli prodloužení" zanikl 20. 10. 2026 (Jakub) — nevolá
+ *    se. Klientovi dál chodí upozornění na konec členství (plánovač).
  *
  * **Konec se nikdy nepíše ručně do `validUntil`**, vždy přes
  * `prepocitejPlatnost()`. Volá se všude, kde se mění, co je zaplacené:
@@ -29,32 +25,19 @@ import { dnesVPraze, jakoDen, posunDne, zacatekDne } from "@/lib/obdobi";
  * **Kurz platí napořád** (Jakub, 27. 9. 2026): zakoupením kurzu má klient
  * doživotní přístup. **Konzultace je jednorázová** (Jakub, 28. 9. 2026).
  * Ani jeden proto délku nemá (`maPlatnost()` v `types.ts`, hlídá
- * `produkty/actions.ts`), nemá řádek platnosti a nevzniká k němu úkol
- * na prodloužení.
+ * `produkty/actions.ts`), a nemá řádek platnosti.
  */
 
 /**
  * Zruší platnost produktu, který se stal kurzem nebo konzultací.
  *
  * Zahodí délku opsanou do zaplacených položek, spočítané konce u klientů
- * a otevřené úkoly na prodloužení, které k nim CRM založilo. Totéž
+ * u klientů. Totéž
  * udělaly migrace `kurz_neomezeno` a `konzultace_bez_platnosti`
  * s produkty, které už v ceníku byly.
  */
 export async function zrusPlatnostProduktu(tx: Transakce, productId: string): Promise<void> {
   await tx.orderItem.updateMany({ where: { productId }, data: { validityMonths: null } });
-
-  const radky = await tx.productValidity.findMany({
-    where: { productId },
-    select: { reminderTaskId: true },
-  });
-  const ukoly = radky.flatMap((radek) => (radek.reminderTaskId ? [radek.reminderTaskId] : []));
-  if (ukoly.length > 0) {
-    await tx.task.updateMany({
-      where: { id: { in: ukoly }, doneAt: null, deletedAt: null },
-      data: { deletedAt: new Date() },
-    });
-  }
 
   await tx.productValidity.deleteMany({ where: { productId } });
 }
@@ -157,11 +140,6 @@ export function spocitejKonec(
  * Volá se uvnitř transakce se změnou, která ji vyvolala — platnost se tak
  * nikdy nerozejde se stavem objednávek. Zaplacené objednávky v koši se
  * nepočítají, stejně jako u tržeb.
- *
- * Když se konec změní a k tomu starému už CRM založilo úkol na
- * prodloužení, úkol se uklidí: při prodloužení se odškrtne (klient
- * prodloužil, volat netřeba), při zkrácení nebo zrušení platby zmizí.
- * Nový úkol k novému konci založí `zalozUkolyNaProdlouzeni()`.
  */
 export async function prepocitejPlatnost(tx: Transakce, clientId: string): Promise<void> {
   const [polozky, radky] = await Promise.all([
@@ -185,8 +163,6 @@ export async function prepocitejPlatnost(tx: Transakce, clientId: string): Promi
         validUntil: true,
         manualUntil: true,
         manualAt: true,
-        reminderForUntil: true,
-        reminderTask: { select: { id: true, doneAt: true, deletedAt: true } },
       },
     }),
   ]);
@@ -224,139 +200,5 @@ export async function prepocitejPlatnost(tx: Transakce, clientId: string): Promi
     if ((radek.validUntil?.getTime() ?? null) === (konec?.getTime() ?? null)) continue;
 
     await tx.productValidity.update({ where: { id: radek.id }, data: { validUntil: konec } });
-
-    // Úklid úkolu, který patřil k předchozímu konci.
-    const ukol = radek.reminderTask;
-    if (ukol && !ukol.doneAt && !ukol.deletedAt) {
-      const prodlouzeno =
-        konec !== null &&
-        radek.reminderForUntil !== null &&
-        konec.getTime() > radek.reminderForUntil.getTime();
-
-      await tx.task.update({
-        where: { id: ukol.id },
-        data: prodlouzeno ? { doneAt: new Date() } : { deletedAt: new Date() },
-      });
-      await zapisDoAuditu(tx, {
-        userId: null,
-        entity: "tasks",
-        entityId: ukol.id,
-        action: prodlouzeno ? "ukol.hotovy" : "ukol.smazan",
-        after: {
-          automaticky: true,
-          duvod: prodlouzeno ? "klient prodloužil" : "platnost se změnila",
-        },
-      });
-    }
   }
-}
-
-/** Text úkolu na prodloužení. Bez jména klienta — to ukazuje Můj den pod ním. */
-export function textUkolu(produkt: string, konec: Date): string {
-  return `Prodloužení: ${produkt} končí ${formatDatum(konec)}`;
-}
-
-/**
- * Založí úkoly na prodloužení u platností, které brzy končí.
- *
- * **Spouští se při otevření Dashboardu** — automatické spouštění podle
- * hodin aplikace nemá. Úkoly jsou vidět jen v Mém dni na Dashboardu,
- * takže se tím nikdy neopozdí.
- *
- * - Jen když je v Nastavení → Prodloužení vybraný aktivní člověk.
- * - Jen u platností, které končí dnes až za nastavený počet dní, a jen
- *   jednou pro každý konec (`reminderForUntil`). Kdo úkol smaže, druhý
- *   nedostane — dokud se konec nezmění.
- * - Souběžné otevření Dashboardu nezaloží úkol dvakrát: řádek se nejdřív
- *   „zabere" podmíněným zápisem a úkol vznikne jen tomu, komu to vyšlo.
- * - **Nic nevyhazuje.** Selhání nesmí shodit Dashboard.
- */
-export async function zalozUkolyNaProdlouzeni(): Promise<void> {
-  try {
-    const nastaveni = await db.companySettings.findUnique({
-      where: { id: "firma" },
-      select: {
-        renewalLeadDays: true,
-        renewalUser: { select: { id: true, active: true, deletedAt: true } },
-      },
-    });
-
-    const resitel = nastaveni?.renewalUser;
-    if (!nastaveni || !resitel || !resitel.active || resitel.deletedAt) return;
-
-    const dnes = dnesniZacatek();
-    const hranice = posunDne(dnes, nastaveni.renewalLeadDays);
-
-    const kandidati = await db.productValidity.findMany({
-      where: { validUntil: { gte: dnes, lte: hranice }, client: { deletedAt: null } },
-      select: {
-        id: true,
-        clientId: true,
-        validUntil: true,
-        reminderForUntil: true,
-        product: { select: { name: true } },
-      },
-    });
-
-    for (const kandidat of kandidati) {
-      const konec = kandidat.validUntil!;
-      if (kandidat.reminderForUntil?.getTime() === konec.getTime()) continue;
-
-      await db.$transaction(async (tx) => {
-        const zabrano = await tx.productValidity.updateMany({
-          where: {
-            id: kandidat.id,
-            validUntil: konec,
-            reminderForUntil: kandidat.reminderForUntil,
-          },
-          data: { reminderForUntil: konec },
-        });
-        if (zabrano.count === 0) return;
-
-        const ukol = await tx.task.create({
-          data: {
-            clientId: kandidat.clientId,
-            userId: resitel.id,
-            title: textUkolu(kandidat.product.name, konec),
-            // Termín je den konce — do té doby je čas zavolat, pak je
-            // úkol „po termínu".
-            dueAt: konec,
-          },
-          select: { id: true, title: true },
-        });
-
-        await tx.productValidity.update({
-          where: { id: kandidat.id },
-          data: { reminderTaskId: ukol.id },
-        });
-
-        // „Kdo" je prázdné — úkol nezaložil člověk, ale CRM samo.
-        await zapisDoAuditu(tx, {
-          userId: null,
-          entity: "tasks",
-          entityId: ukol.id,
-          action: "ukol.zalozen",
-          after: { title: ukol.title, komu: resitel.id, automaticky: true },
-        });
-      });
-    }
-  } catch (chyba) {
-    // Do logu jen druh chyby, žádná jména klientů (pravidlo 8).
-    console.error(
-      "Úkoly na prodloužení nešly založit:",
-      chyba instanceof Error ? chyba.name : "neznámá chyba",
-    );
-  }
-}
-
-/**
- * Otevřené úkoly na prodloužení přejdou na nově vybraného člověka.
- * Volá se při změně v Nastavení → Prodloužení.
- */
-export async function predejUkolyNaProdlouzeni(tx: Transakce, userId: string): Promise<number> {
-  const vysledek = await tx.task.updateMany({
-    where: { prodlouzeni: { isNot: null }, doneAt: null, deletedAt: null },
-    data: { userId },
-  });
-  return vysledek.count;
 }

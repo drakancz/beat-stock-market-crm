@@ -187,7 +187,7 @@ services:
   #   - e-maily končí v Mailpitu.
   e2e:
     profiles: ["test"]
-    image: mcr.microsoft.com/playwright:v1.63.0-noble
+    image: mcr.microsoft.com/playwright:v1.64.1-noble
     depends_on:
       db:
         condition: service_healthy
@@ -206,6 +206,9 @@ services:
       - next_cache_test:/app/.next
     environment:
       NEXT_TELEMETRY_DISABLED: "1"
+      # „1“ = testy proti produkčnímu sestavení (na GitHubu, e2e/server.sh).
+      # Doma prázdné — běží `next dev`.
+      E2E_PRODUKCE: ${E2E_PRODUKCE:-}
       # Z adresy vývojové databáze se v playwright.config.ts udělá adresa
       # `crm_test`. Na jinou databázi testy nesáhnou.
       DATABASE_URL: ${DATABASE_URL}
@@ -235,10 +238,33 @@ services:
       # kterým se prokazuje volající nám, ven nic neodchází. Stejnou hodnotu
       # čte `e2e/oznameni.spec.ts`.
       PLANOVAC_KEY: "e2e-planovac-klic-nepouzivat-nikde-jinde-0001"
+      # Ranní úlohy plánovače i v noci — testy běží kdykoli.
+      PLANOVAC_RANNI_HODINA: "0"
       SMARTEMAILING_USERNAME: ""
       SMARTEMAILING_API_KEY: ""
       SMARTEMAILING_WEBHOOK_SECRET: ""
       UPLOADTHING_TOKEN: ""
+      # Asistent AI se v testech zkouší proti napodobenině Anthropicu
+      # (`e2e/napodobenina-anthropic.mjs`, spouští ji `e2e/server.sh`).
+      # Klíč je vymyšlený a adresa míří do kontejneru — ven nic neodchází.
+      ANTHROPIC_API_KEY: "e2e-napodobenina-neni-skutecny-klic"
+      ANTHROPIC_BASE_URL: http://localhost:3199
+      # Odchozí webhooky smí v testech na napodobeninu služby v kontejneru
+      # (`e2e/napodobenina-webhooku.mjs`). Jinak jen https mimo vnitřní síť.
+      # **Na Railway se nezadává.**
+      WEBHOOKY_ZKUSEBNI_ADRESA: http://localhost:3198
+      # Platební brána GoPay se v testech zkouší proti napodobenině
+      # (`e2e/napodobenina-gopay.mjs`) — klíče jsou vymyšlené, ven nic neodchází.
+      GOPAY_URL: http://localhost:3197/api
+      GOPAY_GOID: "8000000001"
+      GOPAY_CLIENT_ID: "e2e-napodobenina"
+      GOPAY_CLIENT_SECRET: "e2e-napodobenina-neni-skutecny-klic"
+      # Google Kalendář se v testech zkouší proti napodobenině
+      # (`e2e/napodobenina-google-kalendare.mjs`). Klíč servisního účtu
+      # vymýšlí při každém běhu `e2e/server.sh`; ven nic neodchází.
+      GOOGLE_KALENDAR_UCET: "crm-e2e@napodobenina.iam.gserviceaccount.com"
+      GOOGLE_KALENDAR_API: http://localhost:3196/calendar/v3
+      GOOGLE_KALENDAR_TOKEN_URL: http://localhost:3196/token
       # Přílohy se v testech nahrávají doopravdy — do místního S3Mock,
       # ven nic neodchází. Vlastní bucket, ať se nemíchá s vývojem.
       S3_ENDPOINT: http://s3:9090
@@ -276,6 +302,24 @@ services:
     # Skript se volá přes `sh`, protože bind mount z Windows nepřenáší
     # příznak spustitelnosti.
     entrypoint: ["sh", "/skripty/zaloha-databaze.sh"]
+
+  # Databáze pro další Jakubův projekt na společném serveru (21. 10. 2026,
+  # docs/funkce/sdilena-databaze.md). Spouští se výslovně:
+  #   docker compose --profile databaze run --rm -e PROJEKT=eshop nova-databaze
+  # Adresy (s heslem) uloží do databaze-projektu/ — ten je v .gitignore.
+  nova-databaze:
+    profiles: ["databaze"]
+    image: postgres:18.6-trixie
+    volumes:
+      - ./scripts:/skripty:ro
+      - ./databaze-projektu:/vystup
+    environment:
+      TZ: Europe/Prague
+      # Správcovský účet serveru — na Railway DATABASE_PUBLIC_URL služby
+      # Postgres. Záměrně ne DATABASE_URL aplikace.
+      SPRAVCE_DATABASE_URL: ${SPRAVCE_DATABASE_URL:-}
+      PROJEKT: ${PROJEKT:-}
+    entrypoint: ["sh", "/skripty/nova-databaze.sh"]
 
   # Obnova ze zálohy. PŘEPÍŠE cílovou databázi, proto se potvrzuje jejím
   # názvem. Spouští se výslovně:

@@ -9,7 +9,7 @@ import { prepocitejPlatnost } from "@/lib/platnost";
  * (`klienti/duplicity-actions.ts`), tady je jen samotný přesun.
  *
  * Administrátor vybere, která karta zůstane. Na ni se přesune všechno
- * z druhé: objednávky, poznámky, hovory, úkoly, aktivity, přílohy,
+ * z druhé: objednávky, poznámky, úkoly, aktivity, přílohy,
  * brokeři, platnost členství, záznamy v Chybách a v Aktivitě. Druhá
  * karta jde do Smazaných s `mergedIntoId` — příjem leadů a objednávek
  * podle ní najde zůstávající kartu.
@@ -34,7 +34,6 @@ const KARTA = {
   reportedBrokers: true,
   brokersReportedAt: true,
   consentMarketingAt: true,
-  consentRecordingAt: true,
   smartemailingOptedOutAt: true,
   smartemailingUnsubscribedAt: true,
   lastContactAt: true,
@@ -67,10 +66,8 @@ export interface VysledekSlouceni {
   presunuto: {
     objednavek: number;
     poznamek: number;
-    hovoru: number;
     ukolu: number;
     priloh: number;
-    portfolii: number;
   };
 }
 
@@ -87,8 +84,29 @@ export async function sloucKlienty(
   const odkud = { clientId: odchaziId };
 
   const objednavky = await tx.order.updateMany({ where: odkud, data: kam });
+
+  // Doporučení (5A, 15. 10. 2026): kdo kartu přivedl, se převezme, jen když
+  // zůstávající karta žádného doporučitele nemá. Stejně tak, když sloučená
+  // karta sama doporučovala — doporučitel se přepojí na zůstávající kartu.
+  const doporuceni = await tx.client.findMany({
+    where: { id: { in: [zustavaId, odchaziId] } },
+    select: { id: true, referredById: true, doporucitel: { select: { id: true } } },
+  });
+  const zustavaDop = doporuceni.find((k) => k.id === zustavaId)!;
+  const odchaziDop = doporuceni.find((k) => k.id === odchaziId)!;
+  if (!zustavaDop.referredById && odchaziDop.referredById) {
+    await tx.client.update({
+      where: { id: zustavaId },
+      data: { referredById: odchaziDop.referredById },
+    });
+  }
+  if (!zustavaDop.doporucitel && odchaziDop.doporucitel) {
+    await tx.referrer.update({
+      where: { id: odchaziDop.doporucitel.id },
+      data: { clientId: zustavaId },
+    });
+  }
   const poznamky = await tx.clientNote.updateMany({ where: odkud, data: kam });
-  const hovory = await tx.call.updateMany({ where: odkud, data: kam });
   const ukoly = await tx.task.updateMany({ where: odkud, data: kam });
   await tx.activity.updateMany({ where: odkud, data: kam });
   await tx.userEvent.updateMany({ where: odkud, data: kam });
@@ -99,8 +117,10 @@ export async function sloucKlienty(
   // Vzdělávání (3C, 4. 10. 2026): hotové lekce, účast na webinářích,
   // odznaky a aktivní týdny. Co už má zůstávající karta, se u sloučené
   // zahodí (dvojice musí být jedinečné), zbytek se přesune.
-  const [lekce, webinare, odznaky, tydny] = await Promise.all([
+  const [lekce, hodnoceni, webinare, odznaky, tydny] = await Promise.all([
     tx.lessonProgress.findMany({ where: kam, select: { lessonId: true } }),
+    // Hodnocení lekcí (5C, 18. 10. 2026) — u stejné lekce platí zůstávající.
+    tx.lessonRating.findMany({ where: kam, select: { lessonId: true } }),
     tx.webinarAttendance.findMany({ where: kam, select: { webinarId: true } }),
     tx.clientBadge.findMany({ where: kam, select: { kind: true, refId: true } }),
     tx.clientActiveWeek.findMany({ where: kam, select: { week: true } }),
@@ -109,6 +129,43 @@ export async function sloucKlienty(
     where: { ...odkud, lessonId: { in: lekce.map((l) => l.lessonId) } },
   });
   await tx.lessonProgress.updateMany({ where: odkud, data: kam });
+  await tx.lessonRating.deleteMany({
+    where: { ...odkud, lessonId: { in: hodnoceni.map((h) => h.lessonId) } },
+  });
+  await tx.lessonRating.updateMany({ where: odkud, data: kam });
+  // Co pravidla klientovi udělala (5D, 18. 10. 2026) — u stejné akce platí
+  // zůstávající karta, ať se nic nepošle podruhé.
+  const provedeno = await tx.automationRun.findMany({
+    where: kam,
+    select: { ruleId: true, refKey: true },
+  });
+  if (provedeno.length > 0) {
+    await tx.automationRun.deleteMany({
+      where: { ...odkud, OR: provedeno.map((p) => ({ ruleId: p.ruleId, refKey: p.refKey })) },
+    });
+  }
+  await tx.automationRun.updateMany({ where: odkud, data: kam });
+  // Vlastní pravidla (19. 10. 2026) — stejně jako hotová pravidla výš.
+  const vlastni = await tx.customRuleRun.findMany({
+    where: kam,
+    select: { ruleId: true, refKey: true },
+  });
+  if (vlastni.length > 0) {
+    await tx.customRuleRun.deleteMany({
+      where: { ...odkud, OR: vlastni.map((p) => ({ ruleId: p.ruleId, refKey: p.refKey })) },
+    });
+  }
+  await tx.customRuleRun.updateMany({ where: odkud, data: kam });
+  // Vlastní pole (5B, 18. 10. 2026): co zůstávající karta má, platí.
+  const vyplnena = await tx.clientFieldValue.findMany({ where: kam, select: { fieldId: true } });
+  await tx.clientFieldValue.deleteMany({
+    where: { ...odkud, fieldId: { in: vyplnena.map((v) => v.fieldId) } },
+  });
+  await tx.clientFieldValue.updateMany({ where: odkud, data: kam });
+  // Dotazy u lekcí (5C, 18. 10. 2026) — patří klientovi, přesouvají se.
+  await tx.lessonQuestion.updateMany({ where: odkud, data: kam });
+  // Rezervace konzultací (5B, 19. 10. 2026) — i zrušené, kvůli časové ose.
+  await tx.consultationBooking.updateMany({ where: odkud, data: kam });
   await tx.webinarAttendance.deleteMany({
     where: { ...odkud, webinarId: { in: webinare.map((w) => w.webinarId) } },
   });
@@ -124,24 +181,28 @@ export async function sloucKlienty(
   });
   await tx.clientActiveWeek.updateMany({ where: odkud, data: kam });
 
+  // Štítky (5B, 11. 10. 2026): co zůstávající karta už má, se u sloučené zahodí.
+  const stitky = await tx.clientTagLink.findMany({ where: kam, select: { tagId: true } });
+  await tx.clientTagLink.deleteMany({
+    where: { ...odkud, tagId: { in: stitky.map((s) => s.tagId) } },
+  });
+  await tx.clientTagLink.updateMany({ where: odkud, data: kam });
+
+  // Kvízy a certifikáty (5C, 11. 10. 2026): pokusy se přesunou všechny,
+  // certifikát ke kurzu, který zůstávající karta už má, se zahodí.
+  await tx.quizAttempt.updateMany({ where: odkud, data: kam });
+  const certifikaty = await tx.courseCertificate.findMany({
+    where: kam,
+    select: { courseId: true },
+  });
+  await tx.courseCertificate.deleteMany({
+    where: { ...odkud, courseId: { in: certifikaty.map((c) => c.courseId) } },
+  });
+  await tx.courseCertificate.updateMany({ where: odkud, data: kam });
+
   const prilohy = await tx.attachment.updateMany({
     where: { ownerType: "KLIENT", ownerId: odchaziId },
     data: { ownerId: zustavaId },
-  });
-
-  /*
-   * Brokeři (portfolia): u jednoho brokera smí mít klient jen jedno
-   * portfolio. Když ho mají obě karty, zůstane to na zůstávající a druhé
-   * zůstane u sloučené karty ve Smazaných.
-   */
-  const brokeriZustava = new Set(
-    (await tx.portfolio.findMany({ where: kam, select: { brokerId: true } })).map(
-      (portfolio) => portfolio.brokerId,
-    ),
-  );
-  const portfolia = await tx.portfolio.updateMany({
-    where: { ...odkud, brokerId: { notIn: [...brokeriZustava] } },
-    data: kam,
   });
 
   /*
@@ -192,7 +253,6 @@ export async function sloucKlienty(
       consentMarketingAt: souhlas.consentMarketingAt,
       smartemailingOptedOutAt: souhlas.smartemailingOptedOutAt,
       smartemailingUnsubscribedAt: souhlas.smartemailingUnsubscribedAt,
-      consentRecordingAt: zustava.consentRecordingAt ?? odchazi.consentRecordingAt,
       reportedBrokers: brokeri.reportedBrokers,
       brokersReportedAt: brokeri.brokersReportedAt,
       lastContactAt: pozdejsi(zustava.lastContactAt, odchazi.lastContactAt),
@@ -228,7 +288,7 @@ export async function sloucKlienty(
       text:
         `${formatDatum(new Date())} — sloučeno s kartou ${odchazi.name} (${odchazi.email}). ` +
         `Přesunuto: objednávek ${objednavky.count}, poznámek ${poznamky.count}, ` +
-        `hovorů ${hovory.count}, úkolů ${ukoly.count}, příloh ${prilohy.count}.` +
+        `úkolů ${ukoly.count}, příloh ${prilohy.count}.` +
         (novejsiSouhlas ? " Souhlas s marketingem převzat ze sloučené karty (novější)." : ""),
     },
   });
@@ -236,10 +296,8 @@ export async function sloucKlienty(
   const presunuto = {
     objednavek: objednavky.count,
     poznamek: poznamky.count,
-    hovoru: hovory.count,
     ukolu: ukoly.count,
     priloh: prilohy.count,
-    portfolii: portfolia.count,
   };
 
   await zapisDoAuditu(tx, {

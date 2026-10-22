@@ -2,9 +2,12 @@ import Link from "next/link";
 import { LogOut, UserRound } from "lucide-react";
 
 import { LogoLockup } from "@/components/brand/logo";
+import { PruhUkazky } from "@/components/pruh-ukazky";
+import { PruvodceUkazkou } from "@/components/pruvodce-ukazkou";
 import { Button } from "@/components/ui/button";
 import { db } from "@/lib/db";
 import { requireKlient } from "@/lib/klient/sezeni";
+import { jeUkazkovyKlient } from "@/lib/ukazka";
 import { zaznamenejAktivitu } from "@/lib/vzdelavani/odznaky";
 
 import { InstalaceAplikace } from "./instalace-aplikace";
@@ -29,12 +32,15 @@ export default async function PrihlasenyLayout({ children }: { children: React.R
   const [neprectenych] = await Promise.all([
     db.clientMessage.count({ where: { clientId: klient.clientId, readAt: null } }),
     // Týden, kdy byl klient v klientské části — kvůli odznaku za
-    // pravidelnou aktivitu (3C). Nic dalšího o návštěvě se neukládá.
+    // pravidelnou aktivitu (3C) — a čas poslední návštěvy kvůli „platí,
+    // ale nechodí“ (5B). Nic dalšího o návštěvě se neukládá.
     zaznamenejAktivitu(klient.clientId),
   ]);
 
   return (
-    <div className="bg-muted/40 flex min-h-svh flex-col">
+    // Dole místo pro lištu, která je na telefonu pevně u spodního okraje.
+    <div className="bg-muted/40 flex min-h-svh flex-col pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pb-0">
+      <PruhUkazky />
       <header className="bg-background border-b">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3">
           <Link href="/ucet" aria-label="Klientská část — úvod" className="min-w-0">
@@ -63,6 +69,9 @@ export default async function PrihlasenyLayout({ children }: { children: React.R
         {children}
       </main>
 
+      {/* Průvodce „Co si vyzkoušet“ jen pro ukázkového klienta (Jakub, 22. 10. 2026). */}
+      {jeUkazkovyKlient(klient.email) && <PruvodceUkazkou druh="klient" />}
+
       <footer className="text-muted-foreground mx-auto flex w-full max-w-3xl flex-wrap gap-4 px-4 py-6 text-xs">
         <Link
           href="/ucet/zasady"
@@ -75,6 +84,12 @@ export default async function PrihlasenyLayout({ children }: { children: React.R
           className="hover:text-foreground underline-offset-4 hover:underline"
         >
           Podmínky
+        </Link>
+        <Link
+          href="/ucet/obchodni-podminky"
+          className="hover:text-foreground underline-offset-4 hover:underline"
+        >
+          Obchodní podmínky
         </Link>
       </footer>
     </div>

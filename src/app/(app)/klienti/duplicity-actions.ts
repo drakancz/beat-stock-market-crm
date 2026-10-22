@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { seradDvojici } from "@/lib/duplicity";
 import { viditelniKlienti } from "@/lib/queries";
 import { requireAdmin, requireViewer, type Viewer } from "@/lib/session";
+import { CHRANENA_KARTA, jeChranenaKarta } from "@/lib/ukazka-ochrana";
 import { sloucKlienty } from "@/lib/slouceni";
 
 import type { Vysledek } from "./actions";
@@ -61,6 +62,7 @@ export async function sloucitKlienty(zustavaRaw: string, odchaziRaw: string): Pr
   const dvojice = await dvaKlienti(admin, zustavaRaw, odchaziRaw);
   if (!dvojice) return { ok: false, chyba: "Takové klienty v seznamu nemáme." };
   const { a: zustava, b: odchazi } = dvojice;
+  if (await jeChranenaKarta(odchazi.id)) return { ok: false, chyba: CHRANENA_KARTA };
 
   // Delší lhůta: přesouvá se celá historie a přepočítává platnost.
   const { presunuto } = await db.$transaction(

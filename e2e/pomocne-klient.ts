@@ -80,3 +80,47 @@ export async function prihlasKlienta(page: Page, email: string, heslo: string) {
   await page.getByRole("button", { name: "Přihlásit se" }).click();
   await expect(page.getByRole("heading", { name: /Dobrý den/ })).toBeVisible();
 }
+
+export const VIDEO_YOUTUBE = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+
+/**
+ * Kurz s lekcemi rovnou v databázi (pro testy klientské části). Vrací id
+ * kurzu; id lekcí dohledá `lekceKurzu()`.
+ */
+export async function zalozKurz(
+  productId: string,
+  nazev: string,
+  lekce: string[],
+  zverejneny = true,
+) {
+  const [kurz] = await dotaz<{ id: string }>(
+    `INSERT INTO "courses" ("id", "productId", "title", "publishedAt", "updatedAt")
+     VALUES ($1, $2, $3, ${zverejneny ? "now()" : "NULL"}, now())
+     RETURNING "id"`,
+    [`e2ekurz${pripona()}${pripona()}`, productId, nazev],
+  );
+  for (const [i, titulek] of lekce.entries()) {
+    await dotaz(
+      `INSERT INTO "course_lessons" ("id", "courseId", "title", "body", "videoUrl", "position", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, $6, now())`,
+      [
+        `e2elekce${pripona()}${pripona()}`,
+        kurz!.id,
+        titulek,
+        `Text lekce ${titulek}.\n\nDruhý odstavec.`,
+        i === 0 ? VIDEO_YOUTUBE : null,
+        i + 1,
+      ],
+    );
+  }
+  return kurz!.id;
+}
+
+/** Id lekcí kurzu v pořadí. */
+export async function lekceKurzu(courseId: string): Promise<string[]> {
+  const radky = await dotaz<{ id: string }>(
+    `SELECT "id" FROM "course_lessons" WHERE "courseId" = $1 ORDER BY "position"`,
+    [courseId],
+  );
+  return radky.map((radek) => radek.id);
+}

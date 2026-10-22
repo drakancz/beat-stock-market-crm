@@ -7,91 +7,143 @@ import { rozdilProAudit, zapisDoAuditu } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { pocet } from "@/lib/mnozne";
 import { nactiNastaveni } from "@/lib/nastaveni";
-import { predejUkolyNaProdlouzeni } from "@/lib/platnost";
 import { requireAdmin } from "@/lib/session";
 
 /**
- * Nastavení → Prodloužení (Jakub, 24. 9. 2026): komu CRM zakládá úkol
- * „zavolat kvůli prodloužení" a kolik dní před koncem platnosti.
+ * Nastavení → Prodloužení: připomínky nezaplacené objednávky a hranice
+ * „Platí, ale nechodí“. Úkol „zavolat kvůli prodloužení“ zanikl
+ * 20. 10. 2026 (Jakub).
  *
  * **Vidí i mění jen administrátor.** Nepřihlášený se k tomu nedostane.
  */
 
 export type Vysledek = { ok: true; zprava: string } | { ok: false; chyba: string };
 
-const vstupSchema = z.object({
-  // Prázdné = nikdo, úkoly nevznikají.
-  renewalUserId: z
-    .string()
-    .trim()
-    .max(64)
-    .transform((hodnota) => (hodnota === "" || hodnota === "nikdo" ? null : hodnota)),
-  renewalLeadDays: z.coerce
-    .number({ error: "Počet dní musí být číslo." })
-    .int("Počet dní musí být celé číslo.")
-    .min(1, "Úkol musí vzniknout aspoň den předem.")
-    .max(90, "Víc než 90 dní předem nejde."),
-});
+/* ---------- Připomínka nezaplacené objednávky (Fáze 5A, 11. 10. 2026) ---------- */
 
-export async function ulozProdlouzeni(formData: FormData): Promise<Vysledek> {
+const platbySchema = z
+  .object({
+    zapnuto: z.enum(["ano", "ne"]),
+    paymentReminderFirstDays: z.coerce
+      .number({ error: "Počet dní musí být číslo." })
+      .int("Počet dní musí být celé číslo.")
+      .min(1, "První připomínka nejdřív den po objednávce.")
+      .max(60, "Víc než 60 dní nejde."),
+    paymentReminderSecondDays: z.coerce
+      .number({ error: "Počet dní musí být číslo." })
+      .int("Počet dní musí být celé číslo.")
+      .min(1, "Druhá připomínka nejdřív den po objednávce.")
+      .max(60, "Víc než 60 dní nejde."),
+  })
+  .refine(
+    (vstup) => vstup.paymentReminderSecondDays > vstup.paymentReminderFirstDays,
+    "Druhá připomínka musí přijít později než první.",
+  );
+
+/**
+ * Nastavení připomínek nezaplacených objednávek. **Jen administrátor**
+ * (Jakub, 11. 10. 2026). Kdy připomínka odešla, vidí u objednávky každý.
+ */
+export async function ulozPripominkyPlatby(formData: FormData): Promise<Vysledek> {
   const admin = await requireAdmin();
 
-  const vstup = vstupSchema.safeParse({
-    renewalUserId: formData.get("renewalUserId") ?? "",
-    renewalLeadDays: formData.get("renewalLeadDays") ?? "",
+  const vstup = platbySchema.safeParse({
+    zapnuto: formData.get("zapnuto"),
+    paymentReminderFirstDays: formData.get("paymentReminderFirstDays") ?? "",
+    paymentReminderSecondDays: formData.get("paymentReminderSecondDays") ?? "",
   });
   if (!vstup.success) {
     return { ok: false, chyba: vstup.error.issues[0]?.message ?? "Neplatný požadavek." };
   }
-  const { renewalUserId, renewalLeadDays } = vstup.data;
-
-  // Vybrat jde jen člověka, který se může přihlásit — jinak by úkoly
-  // padaly někomu, kdo je nikdy neuvidí.
-  const resitel = renewalUserId
-    ? await db.user.findFirst({
-        where: { id: renewalUserId, active: true, deletedAt: null },
-        select: { id: true, name: true },
-      })
-    : null;
-  if (renewalUserId && !resitel) return { ok: false, chyba: "Vybraný člověk v týmu není." };
+  const { zapnuto, paymentReminderFirstDays, paymentReminderSecondDays } = vstup.data;
+  const paymentRemindersEnabled = zapnuto === "ano";
 
   const puvodni = await nactiNastaveni();
+  const nove = {
+    paymentRemindersEnabled,
+    paymentReminderFirstDays,
+    paymentReminderSecondDays,
+  };
   const rozdil = rozdilProAudit(
-    { renewalUserId: puvodni.renewalUserId, renewalLeadDays: puvodni.renewalLeadDays },
-    { renewalUserId, renewalLeadDays },
+    {
+      paymentRemindersEnabled: puvodni.paymentRemindersEnabled,
+      paymentReminderFirstDays: puvodni.paymentReminderFirstDays,
+      paymentReminderSecondDays: puvodni.paymentReminderSecondDays,
+    },
+    nove,
   );
   if (!rozdil) return { ok: true, zprava: "Nic se nezměnilo." };
 
-  const predano = await db.$transaction(async (tx) => {
+  await db.$transaction(async (tx) => {
     await tx.companySettings.upsert({
       where: { id: "firma" },
-      update: { renewalUserId, renewalLeadDays },
-      create: { id: "firma", renewalUserId, renewalLeadDays },
+      update: nove,
+      create: { id: "firma", ...nove },
     });
     await zapisDoAuditu(tx, {
       userId: admin.id,
       entity: "company_settings",
       entityId: "firma",
-      action: "nastaveni.prodlouzeni",
+      action: "nastaveni.pripominky-platby",
       ...rozdil,
     });
-
-    // Otevřené úkoly na prodloužení přejdou na nového člověka — jinak by
-    // zůstaly tomu, kdo to už neřeší.
-    if (resitel && resitel.id !== puvodni.renewalUserId) {
-      return predejUkolyNaProdlouzeni(tx, resitel.id);
-    }
-    return 0;
   });
 
   revalidatePath("/nastaveni/prodlouzeni");
-  revalidatePath("/dashboard");
+  return { ok: true, zprava: "Připomínky platby jsou uložené." };
+}
 
+/* ---------- Platí, ale nechodí (Fáze 5B, 15. 10. 2026) ---------- */
+
+const nechodiSchema = z.object({
+  inactiveMemberDays: z.coerce
+    .number({ error: "Počet dní musí být číslo." })
+    .int("Počet dní musí být celé číslo.")
+    .min(7, "Míň než týden nejde — značku by dostal i člen na dovolené.")
+    .max(180, "Víc než 180 dní nejde."),
+});
+
+/**
+ * Po kolika dnech bez návštěvy dostane člen značku „Nechodí“. **Jen
+ * administrátor** (Jakub, 15. 10. 2026); značku vidí každý přihlášený.
+ */
+export async function ulozHraniciNechodi(formData: FormData): Promise<Vysledek> {
+  const admin = await requireAdmin();
+
+  const vstup = nechodiSchema.safeParse({
+    inactiveMemberDays: formData.get("inactiveMemberDays") ?? "",
+  });
+  if (!vstup.success) {
+    return { ok: false, chyba: vstup.error.issues[0]?.message ?? "Neplatný požadavek." };
+  }
+  const { inactiveMemberDays } = vstup.data;
+
+  const puvodni = await nactiNastaveni();
+  const rozdil = rozdilProAudit(
+    { inactiveMemberDays: puvodni.inactiveMemberDays },
+    { inactiveMemberDays },
+  );
+  if (!rozdil) return { ok: true, zprava: "Nic se nezměnilo." };
+
+  await db.$transaction(async (tx) => {
+    await tx.companySettings.upsert({
+      where: { id: "firma" },
+      update: { inactiveMemberDays },
+      create: { id: "firma", inactiveMemberDays },
+    });
+    await zapisDoAuditu(tx, {
+      userId: admin.id,
+      entity: "company_settings",
+      entityId: "firma",
+      action: "nastaveni.nechodi",
+      ...rozdil,
+    });
+  });
+
+  revalidatePath("/nastaveni/prodlouzeni");
+  revalidatePath("/klienti");
   return {
     ok: true,
-    zprava:
-      predano > 0
-        ? `Uloženo. Otevřené úkoly na prodloužení přešly na nového člověka: ${pocet(predano, "úkol", "úkoly", "úkolů")}.`
-        : "Nastavení prodloužení je uložené.",
+    zprava: `Uloženo. Značku Nechodí dostane člen po ${pocet(inactiveMemberDays, "dni", "dnech", "dnech")} bez návštěvy.`,
   };
 }

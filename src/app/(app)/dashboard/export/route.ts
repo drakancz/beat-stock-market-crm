@@ -25,8 +25,7 @@ const KROK_POPIS = { den: "Den", tyden: "Týden", mesic: "Měsíc" } as const;
  *
  * Vlastní obsluha adresy, ne serverová akce: prohlížeč má soubor
  * stáhnout. Rám `(app)` se na obsluhu adres nevztahuje, proto se
- * přihlášení i dvoufázové ověření kontrolují tady (vzor
- * `hovory/export/route.ts`).
+ * přihlášení i dvoufázové ověření kontrolují tady.
  */
 export async function GET(request: Request) {
   const viewer = await getViewer();
@@ -61,7 +60,6 @@ export async function GET(request: Request) {
     ["Souhrn", "Za období", "Za předchozí období"],
     ["Objednávky (přijaté)", ted.objednavky, drive.objednavky],
     ["Cena objednávek", cisloCsv(ted.hodnota), cisloCsv(drive.hodnota)],
-    ["Hovory (uskutečněné)", ted.hovory, drive.hovory],
     [],
 
     // Cíl se nastavuje po měsících, takže je vždycky za tento měsíc —
@@ -79,24 +77,14 @@ export async function GET(request: Request) {
     ...data.objednavkyPodleStavu.map((stav) => [stav.label, stav.pocet, cisloCsv(stav.hodnota)]),
     [],
 
-    ["Hovory podle výsledku", "Počet"],
-    ...data.hovoryPodleVysledku.map((vysledek) => [vysledek.label, vysledek.pocet]),
-    [],
-
     ["Noví klienti podle zdroje", "Počet"],
     ...(data.podleZdroje.length > 0
       ? data.podleZdroje.map((zdroj) => [zdroj.label, zdroj.pocet])
       : [["V období nepřibyl žádný klient.", 0]]),
     [],
 
-    [`Vývoj v čase (${KROK_POPIS[krok].toLowerCase()})`, "Začátek", "Objednávky", "Cena", "Hovory"],
-    ...data.vyvoj.map((bod) => [
-      bod.popisek,
-      bod.klic,
-      bod.objednavky,
-      cisloCsv(bod.hodnota),
-      bod.hovory,
-    ]),
+    [`Vývoj v čase (${KROK_POPIS[krok].toLowerCase()})`, "Začátek", "Objednávky", "Cena"],
+    ...data.vyvoj.map((bod) => [bod.popisek, bod.klic, bod.objednavky, cisloCsv(bod.hodnota)]),
   ]);
 
   return new Response(csv, {

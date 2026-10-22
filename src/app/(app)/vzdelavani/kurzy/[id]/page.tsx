@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ListOrdered, Video } from "lucide-react";
+import { ArrowLeft, ListOrdered, Lock, Star, Video } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -12,9 +12,14 @@ import { pocet } from "@/lib/mnozne";
 import { idZAdresy } from "@/lib/parametry";
 import { requireViewer } from "@/lib/session";
 import { kurzyBezObsahu } from "@/lib/vzdelavani/crm";
+import { jakoDen } from "@/lib/obdobi";
+import { formatPrumer, nactiHodnoceniLekci, NEJVIC_HVEZD } from "@/lib/vzdelavani/hodnoceni";
+import { popisPravidla, VYBER_PRAVIDLA } from "@/lib/vzdelavani/odemykani";
+import { prectiOtazky } from "@/lib/vzdelavani/kvizy";
 
 import { KurzDialog } from "../../kurz-dialog";
-import { smazKurz, smazLekci, ulozLekci } from "../../kurzy-actions";
+import { smazKurz, smazKviz, smazLekci, ulozLekci } from "../../kurzy-actions";
+import { KvizDialog } from "../../kviz-dialog";
 import { ObsahDialog } from "../../obsah-dialog";
 import { PosunLekce } from "../../posun-lekce";
 import { SmazaniObsahu } from "../../smazani-obsahu";
@@ -34,7 +39,14 @@ async function nactiKurz(id: string) {
       lekce: {
         where: { deletedAt: null },
         orderBy: { position: "asc" },
-        select: { id: true, title: true, body: true, videoUrl: true },
+        select: {
+          id: true,
+          title: true,
+          body: true,
+          videoUrl: true,
+          ...VYBER_PRAVIDLA,
+          kviz: { select: { questions: true, deletedAt: true } },
+        },
       },
     },
   });
@@ -62,7 +74,7 @@ export default async function KurzPage({ params }: PageProps<"/vzdelavani/kurzy/
   if (!kurz) notFound();
 
   const jeAdmin = viewer.role === "ADMINISTRATOR";
-  const [produkty, kupcu] = await Promise.all([
+  const [produkty, kupcu, hodnoceni] = await Promise.all([
     jeAdmin ? kurzyBezObsahu(kurz.id) : Promise.resolve([]),
     // Kolik klientů má kurz zaplacený — tolik ho vidí v klientské části.
     db.client.count({
@@ -77,6 +89,8 @@ export default async function KurzPage({ params }: PageProps<"/vzdelavani/kurzy/
         },
       },
     }),
+    // Hodnocení lekcí (5C, 18. 10. 2026) — vidí každý přihlášený.
+    nactiHodnoceniLekci(kurz.lekce.map((lekce) => lekce.id)),
   ]);
 
   return (
@@ -145,55 +159,98 @@ export default async function KurzPage({ params }: PageProps<"/vzdelavani/kurzy/
             />
           ) : (
             <ol className="divide-border divide-y rounded-md border">
-              {kurz.lekce.map((lekce, poradi) => (
-                <li
-                  key={lekce.id}
-                  className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2"
-                >
-                  <span className="text-muted-foreground w-6 shrink-0 text-right font-mono text-sm">
-                    {poradi + 1}.
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium">{lekce.title}</p>
-                    <p className="text-muted-foreground line-clamp-1 text-xs">
-                      {lekce.videoUrl && (
-                        <Video
-                          className="mr-1 inline size-3.5 align-[-2px]"
-                          aria-label="s videem"
-                        />
+              {kurz.lekce.map((lekce, poradi) => {
+                // Kvíz u lekce (5C): otázky vidí každý, mění jen administrátor.
+                const otazky =
+                  lekce.kviz && !lekce.kviz.deletedAt ? prectiOtazky(lekce.kviz.questions) : null;
+                const hodnoceniLekce = hodnoceni.get(lekce.id);
+                // Postupné odemykání (5C): vidí každý, nastavuje administrátor.
+                const odemceni = popisPravidla(lekce);
+                return (
+                  <li
+                    key={lekce.id}
+                    className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2"
+                  >
+                    <span className="text-muted-foreground w-6 shrink-0 text-right font-mono text-sm">
+                      {poradi + 1}.
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium">{lekce.title}</p>
+                      <p className="text-muted-foreground line-clamp-1 text-xs">
+                        {lekce.videoUrl && (
+                          <Video
+                            className="mr-1 inline size-3.5 align-[-2px]"
+                            aria-label="s videem"
+                          />
+                        )}
+                        {lekce.body.slice(0, 160) || "jen video"}
+                      </p>
+                      {otazky && (
+                        <p className="text-muted-foreground text-xs">
+                          Kvíz · {pocet(otazky.length, "otázka", "otázky", "otázek")}
+                        </p>
                       )}
-                      {lekce.body.slice(0, 160) || "jen video"}
-                    </p>
-                  </div>
-                  {jeAdmin && (
-                    <div className="flex shrink-0 items-center">
-                      <PosunLekce
-                        id={lekce.id}
-                        nazev={lekce.title}
-                        prvni={poradi === 0}
-                        posledni={poradi === kurz.lekce.length - 1}
-                      />
-                      <ObsahDialog
-                        druh="lekce"
-                        skryte={{ courseId: kurz.id, id: lekce.id }}
-                        obsah={{
-                          title: lekce.title,
-                          body: lekce.body,
-                          videoUrl: lekce.videoUrl ?? "",
-                        }}
-                        ulozit={ulozLekci}
-                      />
-                      <SmazaniObsahu
-                        maly
-                        titulek="Smazat lekci"
-                        nazev={lekce.title}
-                        dusledky="Zmizí z kurzu i u klientů, kteří ji mají hotovou."
-                        smazat={smazLekci.bind(null, lekce.id)}
-                      />
+                      {odemceni && (
+                        <p className="text-muted-foreground flex items-center gap-1 text-xs">
+                          <Lock className="size-3.5" aria-hidden />
+                          {odemceni}
+                        </p>
+                      )}
+                      <p className="text-muted-foreground flex items-center gap-1 text-xs">
+                        <Star className="size-3.5" aria-hidden />
+                        {hodnoceniLekce
+                          ? `Hodnocení ${formatPrumer(hodnoceniLekce.prumer)} z ${NEJVIC_HVEZD} · ${pocet(hodnoceniLekce.pocet, "hodnocení", "hodnocení", "hodnocení")}`
+                          : "Zatím bez hodnocení"}
+                      </p>
                     </div>
-                  )}
-                </li>
-              ))}
+                    {!jeAdmin && otazky && (
+                      <KvizDialog lekceId={lekce.id} lekce={lekce.title} otazky={otazky} jenCteni />
+                    )}
+                    {jeAdmin && (
+                      <div className="flex shrink-0 items-center">
+                        <KvizDialog lekceId={lekce.id} lekce={lekce.title} otazky={otazky} />
+                        {otazky && (
+                          <SmazaniObsahu
+                            maly
+                            titulek="Smazat kvíz"
+                            nazev={`kvíz u lekce ${lekce.title}`}
+                            dusledky="Klienti ho přestanou vidět. Kdo ho už splnil, tomu splnění i certifikát zůstanou."
+                            smazat={smazKviz.bind(null, lekce.id)}
+                          />
+                        )}
+                        <PosunLekce
+                          id={lekce.id}
+                          nazev={lekce.title}
+                          prvni={poradi === 0}
+                          posledni={poradi === kurz.lekce.length - 1}
+                        />
+                        <ObsahDialog
+                          druh="lekce"
+                          skryte={{ courseId: kurz.id, id: lekce.id }}
+                          obsah={{
+                            title: lekce.title,
+                            body: lekce.body,
+                            videoUrl: lekce.videoUrl ?? "",
+                            odemceni: {
+                              dni: lekce.unlockAfterDays ? String(lekce.unlockAfterDays) : "",
+                              od: lekce.unlockOn ? jakoDen(lekce.unlockOn) : "",
+                              poPredchozi: lekce.unlockAfterPrevious,
+                            },
+                          }}
+                          ulozit={ulozLekci}
+                        />
+                        <SmazaniObsahu
+                          maly
+                          titulek="Smazat lekci"
+                          nazev={lekce.title}
+                          dusledky="Zmizí z kurzu i u klientů, kteří ji mají hotovou."
+                          smazat={smazLekci.bind(null, lekce.id)}
+                        />
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ol>
           )}
         </CardContent>

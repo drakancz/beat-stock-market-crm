@@ -46,6 +46,8 @@ const SKUPINY: { id: SkupinaChyb | "vse"; label: string }[] = [
   { id: "email", label: "E-maily" },
   { id: "lead", label: "Leady z webu" },
   { id: "objednavka", label: "Objednávky" },
+  { id: "webhook", label: "Webhooky" },
+  { id: "kalendar", label: "Google Kalendář" },
 ];
 
 /** Krátký důvod chyby. U leadu je důvodem rovnou text odmítnutí. */
@@ -203,7 +205,11 @@ export default async function ChybyPage({ searchParams }: PageProps<"/smartemail
                               ? "web (rozhraní pro leady)"
                               : chyba.kind === "smartemailing.webhook"
                                 ? "SmartEmailing (webhook)"
-                                : "bez přihlášení"}
+                                : chyba.kind === "webhook.odeslani"
+                                  ? "CRM (odchozí webhook)"
+                                  : chyba.kind === "kalendar.zapis"
+                                    ? "CRM (Google Kalendář)"
+                                    : "bez přihlášení"}
                         </div>
                       </TableCell>
                       <TableCell className="align-top">

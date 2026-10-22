@@ -10,8 +10,8 @@ import { requireAdmin } from "@/lib/session";
 /**
  * Změny brokerů. Smí je dělat jen administrátor.
  *
- * Brokeři jsou seznam, ze kterého se vybírá u portfolia klienta — kdo se
- * z něj vyřadí, ovlivní práci celého týmu. Proto tu platí totéž co
+ * Brokeři jsou katalog názvů (podle něj se rozpozná broker, kterého klient
+ * uvede na webu) — kdo se z něj vyřadí, ovlivní práci celého týmu. Proto tu platí totéž co
  * u uživatelů: oprávnění se ověřuje na serveru, vstup se kontroluje
  * a každá změna jde do auditního logu ve stejné transakci.
  *
@@ -233,10 +233,8 @@ function obnovStranky(id: string) {
 /**
  * Odložení brokera do koše.
  *
- * **Nemaže se, jen se schová.** Řádek zůstává v databázi, takže portfolia
- * klientů se na něj pořád odkazují a historie dává smysl — a dá se vrátit
- * zpátky. Proto sem smí i broker, u kterého někdo portfolio má; okno se
- * na to jen zeptá.
+ * **Nemaže se, jen se schová.** Řádek zůstává v databázi, historie dává
+ * smysl a dá se vrátit zpátky.
  *
  * Kdo brokera odložil, je v auditním logu.
  */
@@ -248,7 +246,7 @@ export async function dejBrokeraDoKose(id: string): Promise<Vysledek> {
 
   const broker = await db.broker.findUnique({
     where: { id: kdo.data },
-    select: { id: true, name: true, deletedAt: true, _count: { select: { portfolios: true } } },
+    select: { id: true, name: true, deletedAt: true },
   });
 
   if (!broker) return { ok: false, chyba: "Takový broker v systému není." };
@@ -262,7 +260,7 @@ export async function dejBrokeraDoKose(id: string): Promise<Vysledek> {
       entity: "broker",
       entityId: broker.id,
       action: "broker.do-kose",
-      after: { name: broker.name, portfolii: broker._count.portfolios },
+      after: { name: broker.name },
     });
   });
 

@@ -7,6 +7,7 @@ import { rozdilProAudit, zapisDoAuditu } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { MAX_HODIN_PRIHLASENI, nactiNastaveni } from "@/lib/nastaveni";
 import { requireAdmin } from "@/lib/session";
+import { jeUkazkovyTym, VYPNUTO_V_UKAZCE } from "@/lib/ukazka";
 
 /**
  * Zabezpečení (Nastavení → Zabezpečení). **Smí jen administrátor.**
@@ -32,6 +33,8 @@ const zabezpeceniSchema = z.object({
 
 export async function ulozZabezpeceni(formData: FormData): Promise<Vysledek> {
   const admin = await requireAdmin();
+  // Povinné dvoufázové ověření by zamklo ostatní návštěvníky ukázky.
+  if (jeUkazkovyTym(admin.email)) return { ok: false, chyba: VYPNUTO_V_UKAZCE };
 
   const vstup = zabezpeceniSchema.safeParse({
     twoFactorPolicy: formData.get("twoFactorPolicy"),

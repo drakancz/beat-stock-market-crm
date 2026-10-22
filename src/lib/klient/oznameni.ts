@@ -2,6 +2,7 @@ import webpush, { WebPushError } from "web-push";
 
 import { db } from "@/lib/db";
 import { odesilaniFunguje, posliUpozorneniKlientovi } from "@/lib/email";
+import { jeUkazka } from "@/lib/ukazka";
 
 /**
  * Upozornění klientovi (krok 3A, Jakub 4. 10. 2026) — oznámení v telefonu,
@@ -44,6 +45,8 @@ interface KlicePush {
 }
 
 function klicePush(): KlicePush | null {
+  // Ukázka nepošle ven nic (src/lib/ukazka.ts) — oznámení jsou jako nenastavená.
+  if (jeUkazka()) return null;
   const verejny = process.env.VAPID_PUBLIC_KEY?.trim();
   const soukromy = process.env.VAPID_PRIVATE_KEY?.trim();
   // Veřejný klíč P-256 má v base64url 87 znaků, soukromý 43.
@@ -270,10 +273,16 @@ export async function upozorniNaZaplaceni(orderId: string): Promise<void> {
   const objednavka = await db.order
     .findFirst({
       where: { id: orderId, deletedAt: null, status: "ZAPLACENO" },
-      select: { number: true, clientId: true },
+      select: {
+        number: true,
+        clientId: true,
+        faktury: { where: { kind: "FAKTURA" }, select: { number: true } },
+      },
     })
     .catch(() => null);
   if (!objednavka) return;
+  // Faktura (19. 10. 2026) vzniká těsně před tímhle upozorněním.
+  const faktura = objednavka.faktury[0]?.number;
 
   await upozorniKlienta(objednavka.clientId, {
     nadpis: "Objednávka je zaplacená",
@@ -282,7 +291,9 @@ export async function upozorniNaZaplaceni(orderId: string): Promise<void> {
     znacka: `objednavka-${objednavka.number}`,
     odstavceEmailu: [
       `Dobrý den, děkujeme — objednávku ${objednavka.number} máme zaplacenou.`,
-      "Co jste objednali a do kdy vám platí členství, najdete v klientské části.",
+      faktura
+        ? `Fakturu  i to, do kdy vám platí členství, najdete v klientské části.`
+        : "Co jste objednali a do kdy vám platí členství, najdete v klientské části.",
     ],
   });
 }

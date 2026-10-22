@@ -1,5 +1,4 @@
-import type { McpServer, ToolCallback } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, McpServer, ToolCallback } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
 import type { Prisma } from "@/generated/prisma/client";
@@ -17,7 +16,6 @@ import { dnesniZacatek } from "@/lib/platnost";
 import {
   nactiBrokery,
   nactiDashboard,
-  nactiHovory,
   nactiMojeUkoly,
   nactiObjednavky,
   nactiPlatnostiKlienta,
@@ -33,9 +31,7 @@ import { POPIS_CHYBY_SMARTEMAILINGU } from "@/lib/smartemailing";
 import { nactiPrehledSynchronizace } from "@/lib/smartemailing-synchronizace";
 import {
   AUTO_CONNECT_LABEL,
-  CALL_OUTCOMES,
   ORDER_STATUS_LABEL,
-  OUTCOME_LABEL,
   PRODUCT_KIND_LABEL,
   PROGRAM_ACCESS_LABEL,
   ROLE_LABEL,
@@ -139,7 +135,17 @@ function objednavkaVen(objednavka: ObjednavkaKZobrazeni) {
 export function zaregistrujNastroje(
   server: McpServer,
   viewer: Viewer,
-  { smiZapisovat = false }: { smiZapisovat?: boolean } = {},
+  {
+    smiZapisovat = false,
+    zapisovatAktivitu = true,
+  }: {
+    smiZapisovat?: boolean;
+    /**
+     * Asistent AI v CRM (`src/lib/asistent/`) si do Aktivity zapisuje
+     * jeden řádek za otázku sám, ne každé volání nástroje.
+     */
+    zapisovatAktivitu?: boolean;
+  } = {},
 ): void {
   /**
    * Obal kolem každého nástroje: zápis do Aktivity a zachycení chyby.
@@ -162,12 +168,13 @@ export function zaregistrujNastroje(
     const obsluz = async (argumenty: z.infer<z.ZodObject<Tvar>>): Promise<CallToolResult> => {
       try {
         const vysledek = await obsluha(argumenty);
-        zapisUdalostPozdeji({
-          userId: viewer.id,
-          kind: "MCP",
-          detail: nazev,
-          ...("klientId" in vysledek && vysledek.klientId ? { clientId: vysledek.klientId } : {}),
-        });
+        if (zapisovatAktivitu)
+          zapisUdalostPozdeji({
+            userId: viewer.id,
+            kind: "MCP",
+            detail: nazev,
+            ...("klientId" in vysledek && vysledek.klientId ? { clientId: vysledek.klientId } : {}),
+          });
         return "chyba" in vysledek ? chybaNastroje(vysledek.chyba) : odpovedNastroje(vysledek.data);
       } catch (chyba) {
         // Jen druh chyby — hlášení z databáze může nést hodnoty ze záznamu.
@@ -184,13 +191,14 @@ export function zaregistrujNastroje(
       {
         title: popis.titulek,
         description: popis.popis,
-        inputSchema: vstup,
+        // MCP 2 chce celé schéma, ne jen jeho pole (18. 10. 2026).
+        inputSchema: z.object(vstup),
         annotations: popis.zapis ? ZAPIS : JEN_CTENI,
       },
       // SDK odvozuje typ argumentů ze schématu a s obecným `Tvar` si ho
       // TypeScript nespojí. Argumenty SDK před voláním ověří schématem,
       // návratový typ hlídá `CallToolResult` výš.
-      obsluz as unknown as ToolCallback<Tvar>,
+      obsluz as unknown as ToolCallback<z.ZodObject<Tvar>>,
     );
   }
 
@@ -209,6 +217,7 @@ export function zaregistrujNastroje(
       hledat: z.string().trim().max(100).optional().describe("Jméno, e-mail nebo telefon"),
       pristup: z.enum(["POVOLEN", "NEPOVOLEN"]).optional().describe("Přístup do programu"),
       souhlasMarketing: z.boolean().optional().describe("Jen se souhlasem (true) / bez (false)"),
+      stitek: z.string().trim().max(40).optional().describe("Jen klienti s tímto štítkem (název)"),
       platnost: z
         .enum(["bezi", "skoncila", "zadna"])
         .optional()
@@ -227,6 +236,14 @@ export function zaregistrujNastroje(
         podminky.push({ id: { in: [...podleTextu, ...podleTelefonu] } });
       }
       if (vstup.pristup) podminky.push({ programAccess: vstup.pristup });
+      // Štítek podle názvu (Fáze 5B, 11. 10. 2026).
+      if (vstup.stitek) {
+        podminky.push({
+          stitky: {
+            some: { tag: { deletedAt: null, name: { equals: vstup.stitek, mode: "insensitive" } } },
+          },
+        });
+      }
       if (vstup.souhlasMarketing !== undefined) {
         podminky.push({ consentMarketingAt: vstup.souhlasMarketing ? { not: null } : null });
       }
@@ -257,6 +274,10 @@ export function zaregistrujNastroje(
             select: { createdAt: true, status: true },
           },
           platnosti: { where: { validUntil: { not: null } }, select: { validUntil: true } },
+          stitky: {
+            where: { tag: { deletedAt: null } },
+            select: { tag: { select: { name: true } } },
+          },
         },
       });
 
@@ -279,6 +300,7 @@ export function zaregistrujNastroje(
                 ? null
                 : jakoDen(new Date(bezici.length ? Math.min(...bezici) : Math.max(...konce))),
             clenstviSkoncilo: konce.length > 0 && bezici.length === 0,
+            stitky: klient.stitky.map((vazba) => vazba.tag.name),
           };
         })
         .sort(
@@ -302,7 +324,7 @@ export function zaregistrujNastroje(
       titulek: "Detail klienta",
       popis:
         "Všechno, co CRM o klientovi ví, kromě e-mailu a telefonu: zdroj, stav, souhlasy, " +
-        "přístup do programu, platnost členství, SmartEmailing, brokeři a souhrn objednávek.",
+        "přístup do programu, platnost členství, štítky, SmartEmailing, brokeři a souhrn objednávek.",
     },
     { klientId: idSchema },
     async ({ klientId }) => {
@@ -316,7 +338,6 @@ export function zaregistrujNastroje(
           createdAt: true,
           lastContactAt: true,
           consentMarketingAt: true,
-          consentRecordingAt: true,
           reportedBrokers: true,
           brokersReportedAt: true,
           smartemailingSentAt: true,
@@ -326,9 +347,9 @@ export function zaregistrujNastroje(
           smartemailingUnsubscribedAt: true,
           smartemailingOptedOutAt: true,
           source: { select: { name: true } },
-          portfolios: {
-            where: { deletedAt: null, broker: { deletedAt: null } },
-            select: { broker: { select: { name: true } } },
+          stitky: {
+            where: { tag: { deletedAt: null } },
+            select: { tag: { select: { name: true } } },
           },
           orders: {
             where: { deletedAt: null },
@@ -349,7 +370,6 @@ export function zaregistrujNastroje(
           _count: {
             select: {
               notes: { where: { deletedAt: null } },
-              calls: { where: { deletedAt: null } },
             },
           },
         },
@@ -367,13 +387,13 @@ export function zaregistrujNastroje(
           id: klient.id,
           jmeno: klient.name,
           zdroj: klient.source.name,
+          stitky: klient.stitky.map((vazba) => vazba.tag.name),
           stav: STAGE_LABEL[klient.stage],
           vSystemuOd: klient.createdAt,
           posledniKontakt: klient.lastContactAt,
           pristupDoProgramu: PROGRAM_ACCESS_LABEL[klient.programAccess],
           souhlasy: {
             marketing: klient.consentMarketingAt,
-            nahravaniHovoru: klient.consentRecordingAt,
           },
           smartemailing: {
             odeslanDo: klient.smartemailingSentAt
@@ -395,7 +415,6 @@ export function zaregistrujNastroje(
                 uvedeno: klient.brokersReportedAt,
               }
             : null,
-          brokeri: klient.portfolios.map((portfolio) => portfolio.broker.name),
           platnostClenstvi: platnosti.map((platnost) => ({
             produkt: platnost.produkt,
             platiDoVcetne: jakoDen(platnost.do),
@@ -408,7 +427,6 @@ export function zaregistrujNastroje(
             zaplacenoCelkemBezDph: zaplacene.reduce((soucet, o) => soucet + hodnota(o.items), 0),
           },
           pocetPoznamek: klient._count.notes,
-          pocetHovoru: klient._count.calls,
         },
       };
     },
@@ -488,49 +506,6 @@ export function zaregistrujNastroje(
             kdy: poznamka.createdAt,
             autor: poznamka.authorName ?? "web a objednávky",
             text: poznamka.text,
-          })),
-        },
-      };
-    },
-  );
-
-  nastroj(
-    "hovory_klienta",
-    {
-      titulek: "Hovory s klientem",
-      popis: "Zapsané hovory s klientem: kdy, kdo, výsledek, délka a poznámka (bez kontaktů).",
-    },
-    { klientId: idSchema },
-    async ({ klientId }) => {
-      const klient = await viditelnyKlient(viewer, klientId);
-      if (!klient) return { chyba: NENALEZENO };
-
-      const hovory = await db.call.findMany({
-        where: {
-          AND: [{ clientId: klientId, deletedAt: null }, { client: viditelniKlienti(viewer) }],
-        },
-        orderBy: { at: "desc" },
-        select: {
-          at: true,
-          durationMin: true,
-          outcome: true,
-          note: true,
-          user: { select: { name: true } },
-          order: { select: { number: true, deletedAt: true } },
-        },
-      });
-
-      return {
-        klientId,
-        data: {
-          klient: klient.name,
-          hovory: hovory.map((hovor) => ({
-            kdy: hovor.at,
-            kdoZapsal: hovor.user.name,
-            vysledek: OUTCOME_LABEL[hovor.outcome],
-            delkaMinut: hovor.durationMin,
-            objednavka: hovor.order && !hovor.order.deletedAt ? hovor.order.number : null,
-            poznamka: hovor.note,
           })),
         },
       };
@@ -638,13 +613,9 @@ export function zaregistrujNastroje(
       );
       if (!objednavka) return { chyba: "Objednávka s tímhle číslem v CRM není." };
 
-      const hovory = await db.call.count({
-        where: { orderId: objednavka.id, deletedAt: null, client: viditelniKlienti(viewer) },
-      });
-
       return {
         klientId: objednavka.clientId,
-        data: { ...objednavkaVen(objednavka), pocetHovoru: hovory },
+        data: objednavkaVen(objednavka),
       };
     },
   );
@@ -774,14 +745,6 @@ export function zaregistrujNastroje(
             trzbyBezDph: podleProduktu.reduce((soucet, radek) => soucet + radek.trzbyBezDph, 0),
             podleProduktu,
           },
-          hovory: {
-            pocet: dashboard.soucasnost.hovory,
-            predchoziObdobi: dashboard.minulost.hovory,
-            podleVysledku: dashboard.hovoryPodleVysledku.map((radek) => ({
-              vysledek: radek.label,
-              pocet: radek.pocet,
-            })),
-          },
           noviKlientiPodleZdroje: dashboard.podleZdroje.map((radek) => ({
             zdroj: radek.label,
             pocet: radek.pocet,
@@ -790,7 +753,6 @@ export function zaregistrujNastroje(
             usek: bod.popisek,
             objednavek: bod.objednavky,
             hodnotaBezDph: bod.hodnota,
-            hovoru: bod.hovory,
           })),
           cilTentoMesic: {
             mesic: plneni.popis,
@@ -888,7 +850,7 @@ export function zaregistrujNastroje(
     },
   );
 
-  /* ---------- Úkoly a hovory ---------- */
+  /* ---------- Úkoly ---------- */
 
   nastroj(
     "moje_ukoly",
@@ -916,45 +878,6 @@ export function zaregistrujNastroje(
                 : "později",
           klient: { id: ukol.clientId, jmeno: ukol.clientName },
         })),
-      };
-    },
-  );
-
-  nastroj(
-    "prehled_hovoru",
-    {
-      titulek: "Přehled hovorů",
-      popis:
-        "Zapsané hovory napříč klienty za období: kdy, kdo, klient, výsledek, délka. " +
-        "Bez poznámek — ty ukáže hovory_klienta.",
-    },
-    {
-      ...obdobiSchema,
-      vysledek: z.enum(CALL_OUTCOMES as [string, ...string[]]).optional(),
-      limit: limitSchema(100),
-    },
-    async (vstup) => {
-      const { obdobi, popis } = obdobiZVstupu(vstup);
-      const hovory = await nactiHovory(viewer, {
-        od: obdobi.od,
-        do: obdobi.do,
-        vysledek: vstup.vysledek as (typeof CALL_OUTCOMES)[number] | undefined,
-      });
-
-      return {
-        data: {
-          obdobi: popis,
-          celkem: hovory.length,
-          celkemMinut: hovory.reduce((soucet, hovor) => soucet + hovor.durationMin, 0),
-          hovory: hovory.slice(0, vstup.limit).map((hovor) => ({
-            kdy: hovor.at,
-            kdoZapsal: hovor.userName,
-            klient: { id: hovor.clientId, jmeno: hovor.clientName },
-            vysledek: OUTCOME_LABEL[hovor.outcome],
-            delkaMinut: hovor.durationMin,
-            objednavka: hovor.orderNumber,
-          })),
-        },
       };
     },
   );

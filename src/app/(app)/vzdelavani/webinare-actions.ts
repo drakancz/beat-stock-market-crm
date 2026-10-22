@@ -47,6 +47,8 @@ const webinarSchema = z
       }),
     audience: z.enum(["VSICHNI", "CLENOVE", "KURZ"], { error: "Vyber, komu se webinář ukáže." }),
     courseId: z.string().trim().max(64),
+    // Připomínka klientům (5C, 11. 10. 2026) — zaškrtávátko, výchozí zapnuto.
+    pripominka: z.enum(["on"]).nullable(),
   })
   .refine((data) => data.audience !== "KURZ" || data.courseId !== "", {
     message: "Vyber kurz, jehož kupcům se webinář ukáže.",
@@ -64,6 +66,7 @@ export async function ulozWebinar(formData: FormData): Promise<VysledekWebinare>
     joinUrl: formData.get("joinUrl") ?? "",
     audience: formData.get("audience"),
     courseId: formData.get("courseId") ?? "",
+    pripominka: formData.get("pripominka"),
   });
   if (!vstup.success) return { ok: false, chyba: vstup.error.issues[0]!.message };
   const { id, title, description, durationMinutes, joinUrl, audience } = vstup.data;
@@ -80,12 +83,13 @@ export async function ulozWebinar(formData: FormData): Promise<VysledekWebinare>
     if (!kurz) return { ok: false, chyba: "Takový kurz neexistuje." };
   }
 
+  let puvodni: { id: string; startsAt: Date } | null = null;
   if (id) {
-    const existuje = await db.webinar.findFirst({
+    puvodni = await db.webinar.findFirst({
       where: { id, deletedAt: null },
-      select: { id: true },
+      select: { id: true, startsAt: true },
     });
-    if (!existuje) return { ok: false, chyba: "Takový webinář neexistuje." };
+    if (!puvodni) return { ok: false, chyba: "Takový webinář neexistuje." };
   }
 
   const data = {
@@ -96,6 +100,16 @@ export async function ulozWebinar(formData: FormData): Promise<VysledekWebinare>
     joinUrl: joinUrl || null,
     audience,
     courseId,
+    remindersEnabled: vstup.data.pripominka === "on",
+    // Nový začátek = nové připomínky; jinak by klienti nové datum nedostali.
+    ...(puvodni && puvodni.startsAt.getTime() !== startsAt.getTime()
+      ? {
+          remindedDayAt: null,
+          remindedDayCount: null,
+          remindedHourAt: null,
+          remindedHourCount: null,
+        }
+      : {}),
   };
 
   const webinar = await db.$transaction(async (tx) => {

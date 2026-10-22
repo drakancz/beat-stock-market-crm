@@ -62,3 +62,41 @@ export async function webinareKlienta(clientId: string): Promise<Prisma.WebinarW
     ],
   };
 }
+
+/**
+ * Klienti, kterým se webinář ukazuje — opačný směr k `webinareKlienta()`
+ * (připomínka webináře, Fáze 5C, 11. 10. 2026). Jen klienti s aktivním
+ * účtem v klientské části a kartou mimo Smazané.
+ */
+export function klientiWebinare(webinar: {
+  audience: "VSICHNI" | "CLENOVE" | "KURZ";
+  course: { productId: string; deletedAt: Date | null; publishedAt: Date | null } | null;
+}): Prisma.ClientWhereInput | null {
+  const sUctem: Prisma.ClientWhereInput = {
+    deletedAt: null,
+    mergedIntoId: null,
+    ucet: { passwordHash: { not: null }, revokedAt: null },
+  };
+  if (webinar.audience === "VSICHNI") return sUctem;
+  if (webinar.audience === "CLENOVE") {
+    return {
+      ...sUctem,
+      platnosti: {
+        some: { validUntil: { gte: dnesniZacatek() }, product: { kind: "CLENSTVI" } },
+      },
+    };
+  }
+  // Kupci kurzu — jen zveřejněného a nesmazaného, jako v `kurzyKlienta()`.
+  const kurz = webinar.course;
+  if (!kurz || kurz.deletedAt || !kurz.publishedAt) return null;
+  return {
+    ...sUctem,
+    orders: {
+      some: {
+        status: "ZAPLACENO",
+        deletedAt: null,
+        items: { some: { productId: kurz.productId } },
+      },
+    },
+  };
+}

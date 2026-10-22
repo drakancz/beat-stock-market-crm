@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getKlient } from "@/lib/klient/sezeni";
+import { jeUkazka, UKAZKOVY_KLIENT } from "@/lib/ukazka";
 
 import { PrihlaseniKlientaForm } from "./prihlaseni-form";
 
@@ -30,7 +31,7 @@ export default async function PrihlaseniKlientaPage() {
       </CardHeader>
       <CardContent>
         <Suspense fallback={<Skeleton className="h-64 w-full" />}>
-          <PrihlaseniKlientaForm />
+          <PrihlaseniKlientaForm ukazka={jeUkazka() ? UKAZKOVY_KLIENT : undefined} />
         </Suspense>
       </CardContent>
     </Card>

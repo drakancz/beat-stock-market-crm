@@ -15,7 +15,7 @@ import {
 /**
  * Přílohy v okně — tlačítko vedle ostatních akcí záznamu.
  *
- * U klienta je mezi „Zapsat hovor" a „Upravit" (Jakub, 21. 9. 2026),
+ * U klienta je vedle „Upravit" (Jakub, 21. 9. 2026),
  * ať se kvůli souborům nemusí přepínat záložka.
  *
  * Samotný seznam je `SekcePriloh`, která se vykresluje **na serveru**

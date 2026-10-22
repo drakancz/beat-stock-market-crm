@@ -318,8 +318,7 @@ test.describe("příjem objednávek z Landing Page", () => {
 /**
  * Brokeři od klienta (Jakub, 25. 9. 2026): objednávka povinně nese
  * aspoň jednoho brokera (`brokeri`, klient jich může zaškrtnout víc),
- * nebo „Nemám brokera". **Jen informace** — uloží se ke klientovi,
- * portfolio nevzniká.
+ * nebo „Nemám brokera". **Jen informace** — uloží se ke klientovi.
  */
 test.describe("brokeři v objednávce", () => {
   test.beforeEach(({}, info) => {
@@ -335,11 +334,10 @@ test.describe("brokeři v objednávce", () => {
       data: { produkty: [{ nazev: PRODUKT }], souhlasMarketing: false, ...data },
     });
 
-  /** Co klient o brokerech uvedl a kolik má portfolií. */
+  /** Co klient o brokerech uvedl. */
   const brokeriKlienta = async (email: string) => {
-    const [radek] = await dotaz<{ uvedeni: string[]; kdy: Date | null; portfolii: string }>(
-      `SELECT c."reportedBrokers" AS "uvedeni", c."brokersReportedAt" AS "kdy",
-              (SELECT count(*)::text FROM "portfolios" p WHERE p."clientId" = c."id") AS "portfolii"
+    const [radek] = await dotaz<{ uvedeni: string[]; kdy: Date | null }>(
+      `SELECT c."reportedBrokers" AS "uvedeni", c."brokersReportedAt" AS "kdy"
          FROM "clients" c WHERE c."email" = $1`,
       [email],
     );
@@ -366,7 +364,7 @@ test.describe("brokeři v objednávce", () => {
     expect((await oboji.json()).chyba).toContain("ne obojí");
   });
 
-  test("víc brokerů se uloží jako informace, portfolio nevznikne", async ({ request }) => {
+  test("víc brokerů se uloží jako informace", async ({ request }) => {
     const nazev = `Broker Objednavky ${pripona()}`;
     await dotaz(`INSERT INTO "brokers" ("id", "name", "autoConnect") VALUES ($1, $2, 'ANO')`, [
       nazev.toLowerCase().replaceAll(" ", "-"),
@@ -386,7 +384,6 @@ test.describe("brokeři v objednávce", () => {
     const klient = await brokeriKlienta(email);
     expect(klient?.uvedeni).toEqual([nazev, neznamy]);
     expect(klient?.kdy).not.toBeNull();
-    expect(klient?.portfolii).toBe("0");
   });
 
   test("„Nemám brokera“ se uloží, další objednávka údaj přepíše", async ({ request }) => {
@@ -401,6 +398,5 @@ test.describe("brokeři v objednávce", () => {
     expect((await objednej(request, { email, brokeri: [dalsi] })).status()).toBe(201);
     klient = await brokeriKlienta(email);
     expect(klient?.uvedeni).toEqual([dalsi]);
-    expect(klient?.portfolii).toBe("0");
   });
 });

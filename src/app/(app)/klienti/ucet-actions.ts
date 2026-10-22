@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { pozviKlienta, zrusUcetKlienta, type VysledekPozvanky } from "@/lib/klient/pozvanka";
 import { viditelniKlienti } from "@/lib/queries";
 import { requireAdmin } from "@/lib/session";
+import { CHRANENA_KARTA, jeChranenaKarta } from "@/lib/ukazka-ochrana";
 
 /**
  * Účet klienta do klientské části — tlačítka na kartě klienta.
@@ -34,6 +35,8 @@ async function overKlienta(idRaw: string) {
 export async function pozvatDoKlientskeCasti(idRaw: string): Promise<VysledekPozvanky> {
   const overeno = await overKlienta(idRaw);
   if (!overeno) return { ok: false, chyba: "Takový klient neexistuje." };
+  // Nová pozvánka by zneplatnila známé heslo ukázkového klienta.
+  if (await jeChranenaKarta(overeno.klientId)) return { ok: false, chyba: CHRANENA_KARTA };
 
   const vysledek = await pozviKlienta(overeno.klientId, overeno.adminId);
   revalidatePath(`/klienti/${overeno.klientId}`);
@@ -43,6 +46,7 @@ export async function pozvatDoKlientskeCasti(idRaw: string): Promise<VysledekPoz
 export async function zrusitKlientskouCast(idRaw: string): Promise<VysledekPozvanky> {
   const overeno = await overKlienta(idRaw);
   if (!overeno) return { ok: false, chyba: "Takový klient neexistuje." };
+  if (await jeChranenaKarta(overeno.klientId)) return { ok: false, chyba: CHRANENA_KARTA };
 
   const vysledek = await zrusUcetKlienta(overeno.klientId, overeno.adminId);
   revalidatePath(`/klienti/${overeno.klientId}`);

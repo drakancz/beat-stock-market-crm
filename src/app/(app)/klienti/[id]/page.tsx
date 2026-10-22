@@ -6,6 +6,7 @@ import {
   CircleAlert,
   CopyCheck,
   Download,
+  History,
   Mail,
   MessageSquare,
   NotebookPen,
@@ -26,7 +27,6 @@ import { POPIS_DUVODU, najdiDuplicity } from "@/lib/duplicity";
 import { requireViewer } from "@/lib/session";
 import { formatDatum, formatDatumCas, formatMoney, formatTelefon } from "@/lib/format";
 import {
-  nactiBrokery,
   nactiKlienta,
   nactiObjednavky,
   nactiPlatnostiKlienta,
@@ -44,18 +44,27 @@ import {
 } from "@/lib/smartemailing";
 import { ORDER_STATUS_LABEL } from "@/lib/types";
 import { stavUctu } from "@/lib/klient/pozvanka";
+import { nactiKonzultaceKlienta } from "@/lib/konzultace";
 import { pocet } from "@/lib/mnozne";
+import { nactiStitky } from "@/lib/stitky";
+import { nactiPoleKlienta } from "@/lib/vlastni-pole";
+import { nactiBodyKlientu } from "@/lib/vzdelavani/body";
 import { nactiVzdelavaniKlienta } from "@/lib/vzdelavani/klient";
+import { isoTyden } from "@/lib/vzdelavani/odznaky";
+import { aktualniHraniceNechodi, nechodi } from "@/lib/nechodi";
 
 import { KlientDialog } from "../klient-dialog";
 import { SmazaniKlienta } from "../smazani-klienta";
 
+import { CasovaOsa } from "./casova-osa";
 import { HlidaniSmartemailingu } from "./hlidani-smartemailingu";
 import { KlientskaCast } from "./klientska-cast";
+import { StitkyKlienta } from "./stitky-klienta";
 import { OknoKarty } from "./okno-karty";
 import { PoslatDoSmartemailingu } from "./poslat-do-smartemailingu";
 import { PoznamkyKlienta } from "./poznamky-klienta";
 import { UpravaPlatnosti } from "./uprava-platnosti";
+import { VlastniPoleKlienta } from "./vlastni-pole";
 import { ZpravyKlienta } from "./zpravy-klienta";
 
 export const dynamic = "force-dynamic";
@@ -75,10 +84,11 @@ export async function generateMetadata({ params }: PageProps<"/klienti/[id]">): 
  *
  * **Podoba od 23. 9. 2026 (Jakub):** nahoře jméno s e-mailem a telefonem,
  * tlačítka Poslat email · Objednávky · Přílohy · Upravit · Smazat ·
- * Poznámky, pod tím Údaje. Záložky Časová osa, Hovory, Portfolia,
+ * Poznámky (· Zprávy · Časová osa od 16. 10. 2026, okno), pod tím Údaje.
+ * Záložky Časová osa, Hovory, Portfolia,
  * Objednávky a Úkoly zmizely; stav klienta se na kartě neukazuje (zůstal
- * ve formuláři Upravit). Hovory se zapisují v sekci Hovory, úkoly na
- * Dashboardu v Mém dni. Z databáze se tím nic nemazalo.
+ * ve formuláři Upravit). Úkoly jsou na Dashboardu v Mém dni. Hovory
+ * z CRM zmizely úplně 20. 10. 2026. Z databáze se tím nic nemazalo.
  */
 export default async function KlientPage({ params }: PageProps<"/klienti/[id]">) {
   const viewer = await requireViewer();
@@ -93,7 +103,6 @@ export default async function KlientPage({ params }: PageProps<"/klienti/[id]">)
   const jeAdmin = viewer.role === "ADMINISTRATOR";
 
   const [
-    vsichniBrokeri,
     objednavky,
     poznamky,
     zdroje,
@@ -105,7 +114,6 @@ export default async function KlientPage({ params }: PageProps<"/klienti/[id]">)
     ucet,
     zpravy,
   ] = await Promise.all([
-    nactiBrokery(),
     // Rozsah role hlídá `nactiObjednavky()` znovu — na cizí objednávku
     // se přes adresu klienta nedá dostat.
     nactiObjednavky(viewer, { klientId: klient.id }),
@@ -129,6 +137,7 @@ export default async function KlientPage({ params }: PageProps<"/klienti/[id]">)
         revokedAt: true,
         invitedAt: true,
         lastLoginAt: true,
+        lastSeenAt: true,
         notificationsEnabled: true,
       },
     }),
@@ -149,18 +158,80 @@ export default async function KlientPage({ params }: PageProps<"/klienti/[id]">)
   ]);
 
   const stavKlientskeCasti = stavUctu(ucet);
-  const vzdelavani = await nactiVzdelavaniKlienta(klient.id);
+  const [vzdelavani, bodyKlientu, vlastniPole, konzultace] = await Promise.all([
+    nactiVzdelavaniKlienta(klient.id),
+    nactiBodyKlientu([klient.id]),
+    nactiPoleKlienta(klient.id),
+    // Konzultace (5B, 19. 10. 2026) — vidí každý, kdo vidí kartu.
+    nactiKonzultaceKlienta(klient.id),
+  ]);
+  const body = bodyKlientu.get(klient.id)!;
+  // Kdo klienta přivedl (5A, 15. 10. 2026) — vidí každý, kdo vidí kartu.
+  // Odměnu z jeho objednávky jen administrátor.
+  const [doporuceni, odmeny] = await Promise.all([
+    db.client.findUnique({
+      where: { id: klient.id },
+      select: {
+        referredBy: {
+          select: { name: true, client: { select: { id: true, name: true, deletedAt: true } } },
+        },
+      },
+    }),
+    jeAdmin
+      ? db.referralReward.findMany({
+          where: { order: { clientId: klient.id } },
+          select: { amount: true, currency: true, paidOutAt: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  const privedl = doporuceni?.referredBy ?? null;
+
+  // Aktivita klienta (Fáze 5B, 15. 10. 2026) — vidí každý, kdo vidí kartu.
+  const ted = new Date();
+  const [aktivnichTydnu, lekciZa30Dni, { dni: hraniceDni, hranice }] = await Promise.all([
+    db.clientActiveWeek.count({
+      where: {
+        clientId: klient.id,
+        week: {
+          in: Array.from({ length: 12 }, (_, tydnu) =>
+            isoTyden(new Date(ted.getTime() - tydnu * 7 * 86_400_000)),
+          ),
+        },
+      },
+    }),
+    db.lessonProgress.count({
+      where: {
+        clientId: klient.id,
+        completedAt: { gte: new Date(ted.getTime() - 30 * 86_400_000) },
+      },
+    }),
+    aktualniHraniceNechodi(),
+  ]);
+  const klientNechodi = nechodi(
+    {
+      beziClenstvi: platnosti.some((platnost) => !platnost.skoncilo),
+      posledniNavsteva: ucet?.lastSeenAt ?? null,
+      posledniPlatba:
+        objednavky
+          .filter((objednavka) => objednavka.status === "ZAPLACENO" && objednavka.paidAt)
+          .map((objednavka) => objednavka.paidAt!)
+          .sort((a, b) => b.getTime() - a.getTime())[0] ?? null,
+    },
+    hranice,
+  );
+  // Štítky (Fáze 5B, 11. 10. 2026) — přidat a odebrat smí každý přihlášený.
+  const [stitkyKlienta, vsechnyStitky] = await Promise.all([
+    db.clientTagLink.findMany({
+      where: { clientId: klient.id, tag: { deletedAt: null } },
+      orderBy: { tag: { name: "asc" } },
+      select: { tag: { select: { id: true, name: true, color: true } } },
+    }),
+    nactiStitky(),
+  ]);
 
   // Čerstvě založený klient se souhlasem: odeslání do SmartEmailingu ještě
   // běží, karta se proto sama obnoví, až bude výsledek (Jakub, 15. 9. 2026).
   const hlidatSmartemailing = cekaNaOdeslani(klient, nastaveni);
-
-  // Ve formuláři Upravit se nabízejí jen brokeři, ke kterým klient ještě
-  // přiřazený není — dvojice klient + broker smí existovat jen jednou.
-  const maBrokery = new Set(klient.brokerIds);
-  const volniBrokeri = vsichniBrokeri
-    .filter((broker) => !maBrokery.has(broker.id))
-    .map((broker) => ({ id: broker.id, name: broker.name }));
 
   // `nactiObjednavky()` řadí od nejnovější, první je tedy poslední objednávka.
   const posledniObjednavka = objednavky[0]?.createdAt ?? null;
@@ -219,8 +290,6 @@ export default async function KlientPage({ params }: PageProps<"/klienti/[id]">)
           </PrilohyDialog>
 
           <KlientDialog
-            brokeri={volniBrokeri}
-            brokeriKlienta={klient.brokeri}
             zdroje={zdroje}
             klient={{
               id: klient.id,
@@ -230,7 +299,6 @@ export default async function KlientPage({ params }: PageProps<"/klienti/[id]">)
               sourceId: klient.sourceId,
               stage: klient.stage,
               souhlasMarketing: klient.consentMarketingAt !== null,
-              souhlasNahravani: klient.consentRecordingAt !== null,
             }}
           />
 
@@ -279,6 +347,17 @@ export default async function KlientPage({ params }: PageProps<"/klienti/[id]">)
               />
             </OknoKarty>
           )}
+
+          {/* Časová osa (Fáze 5B, Jakub 16. 10. 2026): vidí každý, kdo vidí
+              kartu; druh Změny (audit) jen administrátor — hlídá server. */}
+          <OknoKarty
+            tlacitko="Časová osa"
+            ikona={<History />}
+            nadpis="Časová osa"
+            popis={`Co se u klienta ${klient.name} dělo, od nejnovějšího.`}
+          >
+            <CasovaOsa klientId={klient.id} jeAdmin={jeAdmin} />
+          </OknoKarty>
         </div>
       </div>
 
@@ -359,7 +438,7 @@ export default async function KlientPage({ params }: PageProps<"/klienti/[id]">)
 
       {/*
         Údaje (Jakub, 23. 9. 2026): jen základ — kontakt, objednávky
-        a souhlas s marketingem. Souhlas s nahráváním, Zdroj, V systému od
+        a souhlas s marketingem. Zdroj, V systému od
         a Poslední kontakt zmizely. Řádky SmartEmailingu zůstaly, patří
         k souhlasu s marketingem.
       */}
@@ -368,23 +447,20 @@ export default async function KlientPage({ params }: PageProps<"/klienti/[id]">)
           <CardTitle>Údaje</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <span className="text-muted-foreground shrink-0 text-xs">Štítky</span>
+            <StitkyKlienta
+              klientId={klient.id}
+              klientJmeno={klient.name}
+              maji={stitkyKlienta.map((vazba) => vazba.tag)}
+              vsechny={vsechnyStitky}
+            />
+          </div>
           <Row label="E-mail" value={klient.email} />
           <Row label="Telefon" value={klient.phone ? formatTelefon(klient.phone) : "—"} />
           {/*
-            Broker (Jakub, 25. 9. 2026): u koho má klient portfolio —
-            přiřazuje se v okně Upravit → Brokeři. Vidí každý, kdo vidí kartu.
-          */}
-          <Row
-            label="Broker"
-            value={
-              klient.brokeri.length > 0
-                ? klient.brokeri.map((broker) => broker.nazev).join(", ")
-                : "—"
-            }
-          />
-          {/*
             Co klient sám uvedl při objednávce nebo na webu — jen informace,
-            portfolio z toho nevzniká (Jakub, 25. 9. 2026). Řádek je jen
+            do CRM se z toho nic nezakládá (Jakub, 25. 9. 2026). Řádek je jen
             u klienta, který o brokerech něco uvedl.
           */}
           {klient.brokersReportedAt && (
@@ -396,6 +472,30 @@ export default async function KlientPage({ params }: PageProps<"/klienti/[id]">)
                   : "nemá brokera"
               } (uvedeno z webu ${formatDatum(klient.brokersReportedAt)})`}
             />
+          )}
+          {/* Doporučení (5A, 15. 10. 2026): řádek jen u přivedeného klienta. */}
+          {privedl && (
+            <div className="flex flex-wrap items-baseline justify-between gap-3">
+              <span className="text-muted-foreground shrink-0 text-xs">Přivedl</span>
+              <span className="text-right">
+                {privedl.client && !privedl.client.deletedAt ? (
+                  <Link
+                    href={`/klienti/${privedl.client.id}`}
+                    className="font-medium underline underline-offset-4"
+                  >
+                    {privedl.client.name}
+                  </Link>
+                ) : (
+                  <span className="font-medium">{privedl.name}</span>
+                )}
+                {odmeny.map((odmena, poradi) => (
+                  <span key={poradi} className="text-muted-foreground block text-xs">
+                    Odměna {formatMoney(odmena.amount.toNumber(), odmena.currency)} ·{" "}
+                    {odmena.paidOutAt ? `vyplaceno ${formatDatum(odmena.paidOutAt)}` : "k výplatě"}
+                  </span>
+                ))}
+              </span>
+            </div>
           )}
           <Separator />
           <Row label="Počet objednávek" value={String(objednavky.length)} />
@@ -509,6 +609,49 @@ export default async function KlientPage({ params }: PageProps<"/klienti/[id]">)
             />
           )}
           {/*
+            Aktivita (Fáze 5B, Jakub 15. 10. 2026): vidí každý, kdo vidí
+            kartu. O návštěvě se ukládá jen poslední čas a týden.
+          */}
+          <Row
+            label="Naposledy v klientské části"
+            value={
+              !ucet
+                ? "Nemá účet"
+                : ucet.lastSeenAt
+                  ? formatDatumCas(ucet.lastSeenAt)
+                  : "Zatím nikdy"
+            }
+          />
+          <Row label="Aktivní týdny" value={`${aktivnichTydnu} z posledních 12`} />
+          <Row label="Dokončené lekce za 30 dní" value={String(lekciZa30Dni)} />
+          {konzultace.zaplaceno > 0 && (
+            <Row
+              label="Konzultace"
+              value={`zaplaceno ${konzultace.zaplaceno}, využito ${konzultace.vyuzito}${
+                konzultace.pristi ? `, příští ${formatDatumCas(konzultace.pristi)}` : ""
+              }`}
+            />
+          )}
+          {klientNechodi && (
+            <div className="flex flex-wrap items-baseline justify-between gap-3">
+              <span className="text-muted-foreground shrink-0 text-xs">Aktivita</span>
+              <span className="text-right">
+                <Badge variant="outline">Nechodí</Badge>
+                <span className="text-muted-foreground block text-xs">
+                  Platí členství, ale přes {pocet(hraniceDni, "den", "dny", "dní")} bez návštěvy
+                  klientské části i bez platby.
+                </span>
+              </span>
+            </div>
+          )}
+          {/* Vlastní pole (Fáze 5B, Jakub 18. 10. 2026): vidí i vyplňuje každý přihlášený. */}
+          {vlastniPole.length > 0 && (
+            <>
+              <Separator />
+              <VlastniPoleKlienta klientId={klient.id} pole={vlastniPole} />
+            </>
+          )}
+          {/*
             Vzdělávání (krok 3C, Jakub 4. 10. 2026): postup v kurzech, účast
             na webinářích a odznaky vidí každý, kdo vidí kartu.
           */}
@@ -520,6 +663,48 @@ export default async function KlientPage({ params }: PageProps<"/klienti/[id]">)
                 ? vzdelavani.kurzy
                     .map((kurz) => `${kurz.title} ${kurz.hotovo}/${kurz.lekci}`)
                     .join(", ")
+                : "—"
+            }
+          />
+          {/* Kvízy a certifikáty (Fáze 5C, Jakub 11. 10. 2026): vidí každý, kdo vidí kartu. */}
+          <Row
+            label="Kvízy"
+            value={
+              vzdelavani.kvizy.length > 0
+                ? vzdelavani.kvizy
+                    .map(
+                      (kviz) =>
+                        `${kviz.lekce} ${kviz.nejlepsi.correct}/${kviz.nejlepsi.total} ${
+                          kviz.nejlepsi.passed ? "splněno" : "nesplněno"
+                        } (${pocet(kviz.pokusu, "pokus", "pokusy", "pokusů")})`,
+                    )
+                    .join(", ")
+                : "—"
+            }
+          />
+          {/* Body a úroveň (Fáze 5C, Jakub 18. 10. 2026): vidí každý, kdo vidí kartu. */}
+          <Row label="Body" value={`${body.body} · ${body.uroven.nazev}`} />
+          {/* Hodnocení lekcí (Fáze 5C, Jakub 18. 10. 2026): vidí každý, kdo vidí kartu. */}
+          <Row
+            label="Hodnocení lekcí"
+            value={
+              vzdelavani.hodnoceni.length > 0
+                ? vzdelavani.hodnoceni
+                    .map((hodnoceni) => `${hodnoceni.lekce} ${hodnoceni.hvezd}/5`)
+                    .join(", ")
+                : "—"
+            }
+          />
+          <Row
+            label="Certifikáty"
+            value={
+              vzdelavani.certifikaty.length > 0
+                ? vzdelavani.certifikaty
+                    .map(
+                      (certifikat) =>
+                        `${certifikat.courseTitle} — ${certifikat.number}, ${formatDatum(certifikat.issuedAt)}`,
+                    )
+                    .join("; ")
                 : "—"
             }
           />
@@ -575,6 +760,13 @@ function SeznamObjednavek({
               <span className="tabular text-sm whitespace-nowrap">
                 {formatMoney(objednavka.hodnota, objednavka.currency)}
               </span>
+              {/* Slevový kód (5A, 14. 10. 2026) — částka je už po slevě. */}
+              {objednavka.sleva && (
+                <span className="text-muted-foreground tabular w-full text-xs">
+                  Slevový kód {objednavka.sleva.kod}: −
+                  {formatMoney(objednavka.sleva.bezDph, objednavka.currency)} bez DPH
+                </span>
+              )}
               <span className="text-muted-foreground w-full text-xs">
                 {formatDatum(objednavka.createdAt)} ·{" "}
                 {objednavka.produkty.length === 0

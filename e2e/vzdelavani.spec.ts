@@ -12,7 +12,9 @@ import {
 import {
   prihlasKlienta,
   prohlizecKlienta,
+  VIDEO_YOUTUBE,
   zalozKlientaSUctem,
+  zalozKurz,
   zalozProdukt,
   zaplatProdukt,
 } from "./pomocne-klient";
@@ -26,32 +28,7 @@ import {
  * - Lekce: text, video (jen YouTube/Vimeo), pořadí, Hotovo u klienta.
  */
 
-const VIDEO = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
-
-/** Kurz s lekcemi rovnou v databázi (pro testy klientské části). */
-async function zalozKurz(productId: string, nazev: string, lekce: string[], zverejneny = true) {
-  const [kurz] = await dotaz<{ id: string }>(
-    `INSERT INTO "courses" ("id", "productId", "title", "publishedAt", "updatedAt")
-     VALUES ($1, $2, $3, ${zverejneny ? "now()" : "NULL"}, now())
-     RETURNING "id"`,
-    [`e2ekurz${pripona()}${pripona()}`, productId, nazev],
-  );
-  for (const [i, titulek] of lekce.entries()) {
-    await dotaz(
-      `INSERT INTO "course_lessons" ("id", "courseId", "title", "body", "videoUrl", "position", "updatedAt")
-       VALUES ($1, $2, $3, $4, $5, $6, now())`,
-      [
-        `e2elekce${pripona()}${pripona()}`,
-        kurz!.id,
-        titulek,
-        `Text lekce ${titulek}.\n\nDruhý odstavec.`,
-        i === 0 ? VIDEO : null,
-        i + 1,
-      ],
-    );
-  }
-  return kurz!.id;
-}
+const VIDEO = VIDEO_YOUTUBE;
 
 test.describe("kurzy očima administrátora", () => {
   test.use({ storageState: stavPrihlaseni("admin") });
@@ -77,6 +54,10 @@ test.describe("kurzy očima administrátora", () => {
       ["Úvod", VIDEO],
       ["Druhá lekce", ""],
     ] as const) {
+      // Na telefonu oznámení v dolním rohu tlačítko zakryje — počkat, až zmizí.
+      // Kurzor nad oznámením by jeho zmizení pozdržel, proto pryč.
+      await page.mouse.move(0, 0);
+      await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, { timeout: 15_000 });
       await page.getByRole("button", { name: "Nová lekce" }).click();
       const lekce = page.getByRole("dialog", { name: "Nová lekce" });
       await lekce.getByLabel("Název").fill(titulek);
@@ -84,7 +65,8 @@ test.describe("kurzy očima administrátora", () => {
       await lekce.getByLabel("Text").fill(`Obsah ${titulek}`);
       await lekce.getByRole("button", { name: "Uložit" }).click();
       if (video.startsWith("https://example.com")) {
-        await expect(lekce.getByText(/YouTube nebo Vimeo/)).toBeVisible();
+        // „YouTube nebo Vimeo“ je i v popisu okna — hledá se hláška serveru.
+        await expect(lekce.getByText(/Video musí být odkaz na YouTube nebo Vimeo/)).toBeVisible();
         await lekce.getByRole("button", { name: "Zrušit" }).click();
         continue;
       }
@@ -142,66 +124,444 @@ test.describe("kurzy očima uživatele", () => {
 });
 
 test.describe("kurzy v klientské části", () => {
-  test("klient se zaplaceným kurzem projde lekce a odškrtne je", async ({ browser }) => {
-    const klient = await zalozKlientaSUctem(`Klient Kurz ${pripona()}`);
-    const produkt = await zalozProdukt(`E2E Kurz klient ${pripona()}`);
-    const nazev = `Investování ${pripona()}`;
-    const kurzId = await zalozKurz(produkt, nazev, ["Lekce jedna", "Lekce dvě"]);
+  test(
+    "klient se zaplaceným kurzem projde lekce a odškrtne je",
+    { tag: "@telefon" },
+    async ({ browser }) => {
+      const klient = await zalozKlientaSUctem(`Klient Kurz ${pripona()}`);
+      const produkt = await zalozProdukt(`E2E Kurz klient ${pripona()}`);
+      const nazev = `Investování ${pripona()}`;
+      const kurzId = await zalozKurz(produkt, nazev, ["Lekce jedna", "Lekce dvě"]);
+      await zaplatProdukt(klient.id, produkt);
+
+      const page = await prohlizecKlienta(browser);
+      await prihlasKlienta(page, klient.email, klient.heslo);
+      await page.getByRole("link", { name: "Kurzy" }).click();
+      await page.getByRole("link", { name: nazev }).click();
+      await expect(page.getByText("Hotovo 0 z 2 lekcí")).toBeVisible();
+
+      await page.getByRole("link", { name: "Začít první lekcí" }).click();
+      await expect(page.getByRole("heading", { name: "Lekce jedna" })).toBeVisible();
+      // Video se vkládá z YouTube bez cookies, ne z uložené adresy.
+      await expect(page.locator("iframe")).toHaveAttribute(
+        "src",
+        /^https:\/\/www\.youtube-nocookie\.com\/embed\/dQw4w9WgXcQ/,
+      );
+      await page.getByRole("button", { name: "Označit jako hotovou" }).click();
+      await expect(page.getByRole("button", { name: "Hotovo — vrátit" })).toBeVisible();
+      await bezVodorovnehoPosuvu(page);
+
+      await page.getByRole("link", { name: "Další lekce" }).click();
+      await expect(page.getByRole("heading", { name: "Lekce dvě" })).toBeVisible();
+
+      await page.goto(`/ucet/kurzy/${kurzId}`);
+      await expect(page.getByText("Hotovo 1 z 2 lekcí")).toBeVisible();
+      await expect(page.getByRole("link", { name: "Pokračovat" })).toBeVisible();
+      await page.context().close();
+    },
+  );
+
+  test(
+    "kurz bez zaplacení: jen název, obsah 404, koncept vůbec",
+    { tag: "@telefon" },
+    async ({ browser }) => {
+      const klient = await zalozKlientaSUctem(`Klient Bez Kurzu ${pripona()}`);
+      const nazev = `Cizí kurz ${pripona()}`;
+      const kurzId = await zalozKurz(
+        await zalozProdukt(`E2E Kurz cizí ${pripona()}`, "KURZ", "https://example.com/kurz"),
+        nazev,
+        ["Tajná lekce"],
+      );
+      const koncept = `Koncept ${pripona()}`;
+      await zalozKurz(await zalozProdukt(`E2E Kurz koncept ${pripona()}`), koncept, ["X"], false);
+
+      const page = await prohlizecKlienta(browser);
+      await prihlasKlienta(page, klient.email, klient.heslo);
+      await page.goto("/ucet/kurzy");
+      await expect(page.getByText("Zatím nemáte žádný kurz.")).toBeVisible();
+      await expect(page.getByText(nazev)).toBeVisible();
+      await expect(page.getByRole("link", { name: nazev })).toHaveCount(0);
+      await expect(page.getByRole("link", { name: "Více o kurzu" }).first()).toHaveAttribute(
+        "href",
+        /^https:\/\//,
+      );
+      await expect(page.getByText(koncept)).toHaveCount(0);
+
+      const odpoved = await page.goto(`/ucet/kurzy/${kurzId}`);
+      expect(odpoved?.status()).toBe(404);
+      await expect(page.getByText("Tajná lekce")).toHaveCount(0);
+      await page.context().close();
+    },
+  );
+});
+
+/**
+ * Hodnocení lekce „Pomohla vám lekce?“ (Fáze 5C, Jakub 18. 10. 2026).
+ * Hodnotí jen klient s kurzem, 1–5, smí změnit; tým vidí průměr a kartu.
+ */
+async function lekceKurzu(kurzId: string): Promise<string[]> {
+  const radky = await dotaz<{ id: string }>(
+    `SELECT "id" FROM "course_lessons" WHERE "courseId" = $1 ORDER BY "position"`,
+    [kurzId],
+  );
+  return radky.map((radek) => radek.id);
+}
+
+async function hodnoceniVDatabazi(clientId: string) {
+  return dotaz<{ lessonId: string; stars: number }>(
+    `SELECT "lessonId", "stars" FROM "lesson_ratings" WHERE "clientId" = $1`,
+    [clientId],
+  );
+}
+
+test.describe("hodnocení lekce v klientské části", () => {
+  test("klient ohodnotí lekci a hodnocení změní", { tag: "@telefon" }, async ({ browser }) => {
+    const klient = await zalozKlientaSUctem(`Klient Hodnotí ${pripona()}`);
+    const produkt = await zalozProdukt(`E2E Kurz hodnocení ${pripona()}`);
+    const kurzId = await zalozKurz(produkt, `Hodnocený ${pripona()}`, ["Lekce k hodnocení"]);
     await zaplatProdukt(klient.id, produkt);
+    const [lekceId] = await lekceKurzu(kurzId);
 
     const page = await prohlizecKlienta(browser);
     await prihlasKlienta(page, klient.email, klient.heslo);
-    await page.getByRole("link", { name: "Kurzy" }).click();
-    await page.getByRole("link", { name: nazev }).click();
-    await expect(page.getByText("Hotovo 0 z 2 lekcí")).toBeVisible();
+    await page.goto(`/ucet/lekce/${lekceId}`);
+    const skupina = page.getByRole("group", { name: "Pomohla vám lekce?" });
+    await expect(skupina).toBeVisible();
 
-    await page.getByRole("link", { name: "Začít první lekcí" }).click();
-    await expect(page.getByRole("heading", { name: "Lekce jedna" })).toBeVisible();
-    // Video se vkládá z YouTube bez cookies, ne z uložené adresy.
-    await expect(page.locator("iframe")).toHaveAttribute(
-      "src",
-      /^https:\/\/www\.youtube-nocookie\.com\/embed\/dQw4w9WgXcQ/,
+    await skupina.getByRole("button", { name: "4 z 5" }).click();
+    await expect(page.getByText("Děkujeme za hodnocení.")).toBeVisible();
+    await expect
+      .poll(() => hodnoceniVDatabazi(klient.id))
+      .toEqual([{ lessonId: lekceId, stars: 4 }]);
+
+    // Po načtení stránky zůstane vybrané; změna přepíše, nepřidá druhé.
+    await page.reload();
+    await expect(skupina.getByRole("button", { name: "4 z 5" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
     );
-    await page.getByRole("button", { name: "Označit jako hotovou" }).click();
-    await expect(page.getByRole("button", { name: "Hotovo — vrátit" })).toBeVisible();
+    await skupina.getByRole("button", { name: "2 z 5" }).click();
+    await expect
+      .poll(() => hodnoceniVDatabazi(klient.id))
+      .toEqual([{ lessonId: lekceId, stars: 2 }]);
     await bezVodorovnehoPosuvu(page);
-
-    await page.getByRole("link", { name: "Další lekce" }).click();
-    await expect(page.getByRole("heading", { name: "Lekce dvě" })).toBeVisible();
-
-    await page.goto(`/ucet/kurzy/${kurzId}`);
-    await expect(page.getByText("Hotovo 1 z 2 lekcí")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Pokračovat" })).toBeVisible();
     await page.context().close();
   });
 
-  test("kurz bez zaplacení: jen název, obsah 404, koncept vůbec", async ({ browser }) => {
-    const klient = await zalozKlientaSUctem(`Klient Bez Kurzu ${pripona()}`);
-    const nazev = `Cizí kurz ${pripona()}`;
+  test(
+    "cizí lekci ani hodnotu mimo 1–5 nejde poslat ani přímým voláním",
+    { tag: "@telefon" },
+    async ({ browser }) => {
+      const klient = await zalozKlientaSUctem(`Klient Podvrh ${pripona()}`);
+      const produkt = await zalozProdukt(`E2E Kurz vlastní ${pripona()}`);
+      const [vlastni] = await lekceKurzu(
+        await zalozKurz(produkt, `Vlastní ${pripona()}`, ["Moje"]),
+      );
+      await zaplatProdukt(klient.id, produkt);
+      const [cizi] = await lekceKurzu(
+        await zalozKurz(await zalozProdukt(`E2E Kurz cizí h ${pripona()}`), `Cizí ${pripona()}`, [
+          "Cizí lekce",
+        ]),
+      );
+
+      const page = await prohlizecKlienta(browser);
+      await prihlasKlienta(page, klient.email, klient.heslo);
+      await page.goto(`/ucet/lekce/${vlastni}`);
+      const [akce] = await Promise.all([
+        page.waitForRequest((pozadavek) => !!pozadavek.headers()["next-action"]),
+        page.getByRole("button", { name: "5 z 5" }).click(),
+      ]);
+      const telo = akce.postData() ?? "";
+      expect(telo).toContain(`"${vlastni}",5`);
+      const posli = (data: string) =>
+        page.request.post(akce.url(), {
+          headers: {
+            "Next-Action": akce.headers()["next-action"]!,
+            "Content-Type": akce.headers()["content-type"] ?? "text/plain;charset=UTF-8",
+            Accept: "text/x-component",
+          },
+          data,
+        });
+      await expect.poll(() => hodnoceniVDatabazi(klient.id)).toHaveLength(1);
+
+      await posli(telo.replace(`"${vlastni}",5`, `"${cizi}",5`));
+      await posli(telo.replace(`"${vlastni}",5`, `"${vlastni}",7`));
+      await posli(telo.replace(`"${vlastni}",5`, `"${vlastni}",0`));
+      expect(await hodnoceniVDatabazi(klient.id)).toEqual([{ lessonId: vlastni, stars: 5 }]);
+      await page.context().close();
+    },
+  );
+});
+
+test.describe("hodnocení lekce v CRM", () => {
+  test.use({ storageState: stavPrihlaseni("uzivatel") });
+
+  test("u lekce průměr a počet, na kartě hodnocení klienta", async ({ page }) => {
+    const produkt = await zalozProdukt(`E2E Kurz průměr ${pripona()}`);
+    const kurzId = await zalozKurz(produkt, `Průměr ${pripona()}`, ["Hodnocená", "Bez hodnocení"]);
+    const [lekceId] = await lekceKurzu(kurzId);
+    const prvni = await zalozKlientaSUctem(`Klient Pět ${pripona()}`);
+    const druhy = await zalozKlientaSUctem(`Klient Čtyři ${pripona()}`);
+    for (const [klient, hvezd] of [
+      [prvni, 5],
+      [druhy, 4],
+    ] as const) {
+      await zaplatProdukt(klient.id, produkt);
+      await dotaz(
+        `INSERT INTO "lesson_ratings" ("id", "clientId", "lessonId", "stars", "updatedAt")
+         VALUES (gen_random_uuid()::text, $1, $2, $3, now())`,
+        [klient.id, lekceId, hvezd],
+      );
+    }
+
+    await otevriAzUvidis(
+      page,
+      `/vzdelavani/kurzy/${kurzId}`,
+      page.getByText("Hodnocená", { exact: true }),
+    );
+    await expect(page.getByText("Hodnocení 4,5 z 5 · 2 hodnocení")).toBeVisible();
+    await expect(page.getByText("Zatím bez hodnocení")).toBeVisible();
+
+    await page.goto(`/klienti/${druhy.id}`);
+    await expect(page.getByText("Hodnocená 4/5")).toBeVisible();
+  });
+});
+
+/**
+ * Postupné odemykání lekcí (Fáze 5C, Jakub 18. 10. 2026): N dní po
+ * zakoupení, od data, po dokončení předchozí. Zamčená lekce = jen název
+ * a kdy se otevře, obsah 404 a akce ji odmítnou.
+ */
+test.describe("postupné odemykání v klientské části", () => {
+  test(
+    "dny po zakoupení a datum: zamčená lekce 404, pak se otevře",
+    { tag: "@telefon" },
+    async ({ browser }) => {
+      const klient = await zalozKlientaSUctem(`Klient Odemyká ${pripona()}`);
+      const produkt = await zalozProdukt(`E2E Kurz odemykání ${pripona()}`);
+      const kurzId = await zalozKurz(produkt, `Postupný ${pripona()}`, [
+        "Hned",
+        "Po třech dnech",
+        "Od data",
+      ]);
+      const objednavka = await zaplatProdukt(klient.id, produkt);
+      const [hned, poDnech, odData] = await lekceKurzu(kurzId);
+      await dotaz(`UPDATE "course_lessons" SET "unlockAfterDays" = 3 WHERE "id" = $1`, [poDnech]);
+      await dotaz(
+        `UPDATE "course_lessons" SET "unlockOn" = now() + interval '5 days' WHERE "id" = $1`,
+        [odData],
+      );
+
+      const page = await prohlizecKlienta(browser);
+      await prihlasKlienta(page, klient.email, klient.heslo);
+      await page.goto(`/ucet/kurzy/${kurzId}`);
+      const seznam = page.getByRole("list").filter({ hasText: "Po třech dnech" });
+      await expect(seznam.getByRole("link", { name: /Hned/ })).toBeVisible();
+      await expect(seznam.getByRole("link", { name: /Po třech dnech/ })).toHaveCount(0);
+      await expect(seznam.getByText(/^Otevře se \d+\. \d+\. \d{4}\.$/)).toHaveCount(2);
+      await bezVodorovnehoPosuvu(page);
+
+      // Přímá adresa zamčené lekce je 404 a obsah neprozradí.
+      const odpoved = await page.goto(`/ucet/lekce/${poDnech}`);
+      expect(odpoved?.status()).toBe(404);
+      await expect(page.getByText("Text lekce Po třech dnech")).toHaveCount(0);
+
+      // Hotovo u zamčené lekce nejde ani přímým voláním akce.
+      await page.goto(`/ucet/lekce/${hned}`);
+      const [akce] = await Promise.all([
+        page.waitForRequest((pozadavek) => !!pozadavek.headers()["next-action"]),
+        page.getByRole("button", { name: "Označit jako hotovou" }).click(),
+      ]);
+      const telo = akce.postData() ?? "";
+      expect(telo).toContain(hned);
+      await page.request.post(akce.url(), {
+        headers: {
+          "Next-Action": akce.headers()["next-action"]!,
+          "Content-Type": akce.headers()["content-type"] ?? "text/plain;charset=UTF-8",
+          Accept: "text/x-component",
+        },
+        data: telo.replace(hned, poDnech),
+      });
+      const hotove = await dotaz<{ lessonId: string }>(
+        `SELECT "lessonId" FROM "lesson_progress" WHERE "clientId" = $1`,
+        [klient.id],
+      );
+      expect(hotove.map((radek) => radek.lessonId)).not.toContain(poDnech);
+
+      // Zaplaceno před čtyřmi dny a datum v minulosti → obě otevřené.
+      await dotaz(`UPDATE "orders" SET "paidAt" = now() - interval '4 days' WHERE "id" = $1`, [
+        objednavka,
+      ]);
+      await dotaz(
+        `UPDATE "course_lessons" SET "unlockOn" = now() - interval '1 day' WHERE "id" = $1`,
+        [odData],
+      );
+      // Po Hotovo stránka sama obnoví data — holé `goto()` by se s tím srazilo.
+      await otevriAzUvidis(
+        page,
+        `/ucet/lekce/${poDnech}`,
+        page.getByRole("heading", { name: "Po třech dnech" }),
+      );
+      await otevriAzUvidis(
+        page,
+        `/ucet/lekce/${odData}`,
+        page.getByRole("heading", { name: "Od data" }),
+      );
+      await page.context().close();
+    },
+  );
+
+  test(
+    "po dokončení předchozí: Hotovo otevře další lekci",
+    { tag: "@telefon" },
+    async ({ browser }) => {
+      const klient = await zalozKlientaSUctem(`Klient Navazuje ${pripona()}`);
+      const produkt = await zalozProdukt(`E2E Kurz navazuje ${pripona()}`);
+      const kurzId = await zalozKurz(produkt, `Navazující ${pripona()}`, [
+        "První krok",
+        "Druhý krok",
+      ]);
+      await zaplatProdukt(klient.id, produkt);
+      const [prvni, druha] = await lekceKurzu(kurzId);
+      await dotaz(`UPDATE "course_lessons" SET "unlockAfterPrevious" = true WHERE "id" = $1`, [
+        druha,
+      ]);
+
+      const page = await prohlizecKlienta(browser);
+      await prihlasKlienta(page, klient.email, klient.heslo);
+      await page.goto(`/ucet/lekce/${prvni}`);
+      await expect(
+        page.getByText("Další lekce: Otevře se po dokončení lekce První krok."),
+      ).toBeVisible();
+      await expect(page.getByRole("link", { name: "Další lekce" })).toHaveCount(0);
+
+      await page.getByRole("button", { name: "Označit jako hotovou" }).click();
+      await page.getByRole("link", { name: "Další lekce" }).click();
+      await expect(page.getByRole("heading", { name: "Druhý krok" })).toBeVisible();
+      await expect(page).toHaveURL(new RegExp(`/ucet/lekce/${druha}$`));
+      await page.context().close();
+    },
+  );
+});
+
+test.describe("postupné odemykání v CRM", () => {
+  test.use({ storageState: stavPrihlaseni("admin") });
+
+  test("administrátor nastaví pravidlo ve formuláři lekce", async ({ page }) => {
     const kurzId = await zalozKurz(
-      await zalozProdukt(`E2E Kurz cizí ${pripona()}`, "KURZ", "https://example.com/kurz"),
-      nazev,
-      ["Tajná lekce"],
+      await zalozProdukt(`E2E Kurz pravidlo ${pripona()}`),
+      `Pravidlo ${pripona()}`,
+      ["Úvodní", "Navazující"],
     );
-    const koncept = `Koncept ${pripona()}`;
-    await zalozKurz(await zalozProdukt(`E2E Kurz koncept ${pripona()}`), koncept, ["X"], false);
-
-    const page = await prohlizecKlienta(browser);
-    await prihlasKlienta(page, klient.email, klient.heslo);
-    await page.goto("/ucet/kurzy");
-    await expect(page.getByText("Zatím nemáte žádný kurz.")).toBeVisible();
-    await expect(page.getByText(nazev)).toBeVisible();
-    await expect(page.getByRole("link", { name: nazev })).toHaveCount(0);
-    await expect(page.getByRole("link", { name: "Více o kurzu" }).first()).toHaveAttribute(
-      "href",
-      /^https:\/\//,
+    await otevriAzUvidis(
+      page,
+      `/vzdelavani/kurzy/${kurzId}`,
+      page.getByText("Navazující", { exact: true }),
     );
-    await expect(page.getByText(koncept)).toHaveCount(0);
+    await page.getByRole("button", { name: "Upravit lekci: Navazující" }).click();
+    const okno = page.getByRole("dialog", { name: "Upravit lekci" });
+    await okno.getByLabel("Dní po zakoupení kurzu").fill("7");
+    await okno.getByLabel("Až po dokončení předchozí lekce").check();
+    await okno.getByRole("button", { name: "Uložit" }).click();
+    await cekejNaUspech(page, "Lekce je uložená: Navazující.");
+    await expect(
+      page.getByText("Otevře se 7 dní po zakoupení, po dokončení předchozí lekce"),
+    ).toBeVisible();
 
-    const odpoved = await page.goto(`/ucet/kurzy/${kurzId}`);
-    expect(odpoved?.status()).toBe(404);
-    await expect(page.getByText("Tajná lekce")).toHaveCount(0);
-    await page.context().close();
+    // Po opětovném otevření formulář pravidlo drží; smazání dní ho zruší.
+    await page.mouse.move(0, 0);
+    await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, { timeout: 15_000 });
+    await page.getByRole("button", { name: "Upravit lekci: Navazující" }).click();
+    await expect(okno.getByLabel("Dní po zakoupení kurzu")).toHaveValue("7");
+    await okno.getByLabel("Dní po zakoupení kurzu").fill("");
+    await okno.getByLabel("Až po dokončení předchozí lekce").uncheck();
+    await okno.getByRole("button", { name: "Uložit" }).click();
+    await cekejNaUspech(page, "Lekce je uložená: Navazující.");
+    await expect(page.getByText(/^Otevře se/)).toHaveCount(0);
+  });
+});
+
+test.describe("postupné odemykání — uživatel", () => {
+  test.use({ storageState: stavPrihlaseni("uzivatel") });
+
+  test("pravidlo vidí, měnit nemůže", async ({ page }) => {
+    const kurzId = await zalozKurz(
+      await zalozProdukt(`E2E Kurz vidí ${pripona()}`),
+      `Vidí ${pripona()}`,
+      ["Jediná"],
+    );
+    const [lekce] = await lekceKurzu(kurzId);
+    await dotaz(`UPDATE "course_lessons" SET "unlockAfterDays" = 14 WHERE "id" = $1`, [lekce]);
+    await otevriAzUvidis(
+      page,
+      `/vzdelavani/kurzy/${kurzId}`,
+      page.getByText("Jediná", { exact: true }),
+    );
+    await expect(page.getByText("Otevře se 14 dní po zakoupení")).toBeVisible();
+    await expect(page.getByRole("button", { name: /Upravit lekci/ })).toHaveCount(0);
+  });
+});
+
+/**
+ * Body, úrovně a pořadí (Fáze 5C, Jakub 18. 10. 2026): lekce 10, kvíz 20,
+ * webinář 30, aktivní týden 5, certifikát 50. Pořadí bez jmen ostatních.
+ */
+async function klientSHotovymiLekcemi(jmeno: string, lekci: number) {
+  const klient = await zalozKlientaSUctem(jmeno);
+  const produkt = await zalozProdukt(`E2E Kurz body ${pripona()}`);
+  const kurzId = await zalozKurz(
+    produkt,
+    `Body ${pripona()}`,
+    Array.from({ length: lekci }, (_, i) => `Bodová lekce ${i + 1}`),
+  );
+  await zaplatProdukt(klient.id, produkt);
+  for (const lekceId of await lekceKurzu(kurzId)) {
+    await dotaz(
+      `INSERT INTO "lesson_progress" ("id", "clientId", "lessonId") VALUES (gen_random_uuid()::text, $1, $2)`,
+      [klient.id, lekceId],
+    );
+  }
+  return klient;
+}
+
+test.describe("body a úrovně v klientské části", () => {
+  test(
+    "body za lekce a týden, úroveň Student, pořadí bez jmen",
+    { tag: "@telefon" },
+    async ({ browser }) => {
+      const klient = await klientSHotovymiLekcemi(`Klient Body ${pripona()}`, 10);
+      // Jiný klient s víc body — jeho jméno se klientovi nesmí nikde ukázat.
+      const soused = await klientSHotovymiLekcemi(`Soused Body ${pripona()}`, 12);
+
+      const page = await prohlizecKlienta(browser);
+      await prihlasKlienta(page, klient.email, klient.heslo);
+      // První návštěva zapíše aktivní týden (5 bodů); po načtení je započtený.
+      await expect
+        .poll(
+          async () => {
+            await page.goto("/ucet");
+            return page.locator("[data-slot=card]", { hasText: "Vaše body" }).textContent();
+          },
+          { timeout: 30_000 },
+        )
+        .toContain("105");
+      await expect(page.getByText(/Úroveň Student · pořadí \d+\. z \d+/)).toBeVisible();
+      await expect(page.getByText("Do úrovně Pokročilý zbývá 195 bodů.")).toBeVisible();
+      expect(await page.content()).not.toContain(soused.email);
+      expect(await page.content()).not.toContain("Soused Body");
+      await bezVodorovnehoPosuvu(page);
+      await page.context().close();
+    },
+  );
+});
+
+test.describe("body a úrovně v CRM", () => {
+  test.use({ storageState: stavPrihlaseni("uzivatel") });
+
+  test("tým vidí body a úroveň na kartě klienta", async ({ page }) => {
+    const klient = await klientSHotovymiLekcemi(`Klient Karta Body ${pripona()}`, 3);
+    await page.goto(`/klienti/${klient.id}`);
+    await expect(page.getByText("30 · Začátečník")).toBeVisible();
   });
 });
 
@@ -261,7 +621,7 @@ test.describe("členská sekce očima administrátora", () => {
 });
 
 test.describe("členská sekce v klientské části", () => {
-  test("člen čte zveřejněný článek, koncept nevidí", async ({ browser }) => {
+  test("člen čte zveřejněný článek, koncept nevidí", { tag: "@telefon" }, async ({ browser }) => {
     const klient = await zalozKlientaSUctem(`Klient Člen ${pripona()}`);
     await dejClenstvi(klient.id, 30);
     const clanek = `Pro členy ${pripona()}`;
@@ -282,27 +642,33 @@ test.describe("členská sekce v klientské části", () => {
     await page.context().close();
   });
 
-  test("bez platného členství vysvětlení a článek 404", async ({ browser }) => {
-    const klient = await zalozKlientaSUctem(`Klient Po Konci ${pripona()}`);
-    // Členství skončilo včera.
-    await dejClenstvi(klient.id, -1);
-    const clanek = `Jen pro členy ${pripona()}`;
-    await zalozClanek(clanek);
-    const [radek] = await dotaz<{ id: string }>(
-      `SELECT "id" FROM "member_posts" WHERE "title" = $1`,
-      [clanek],
-    );
+  test(
+    "bez platného členství vysvětlení a článek 404",
+    { tag: "@telefon" },
+    async ({ browser }) => {
+      const klient = await zalozKlientaSUctem(`Klient Po Konci ${pripona()}`);
+      // Členství skončilo včera.
+      await dejClenstvi(klient.id, -1);
+      const clanek = `Jen pro členy ${pripona()}`;
+      await zalozClanek(clanek);
+      const [radek] = await dotaz<{ id: string }>(
+        `SELECT "id" FROM "member_posts" WHERE "title" = $1`,
+        [clanek],
+      );
 
-    const page = await prohlizecKlienta(browser);
-    await prihlasKlienta(page, klient.email, klient.heslo);
-    await page.goto("/ucet/clenska-sekce");
-    await expect(page.getByText("Členská sekce je pro klienty s platným členstvím.")).toBeVisible();
-    await expect(page.getByText(clanek)).toHaveCount(0);
+      const page = await prohlizecKlienta(browser);
+      await prihlasKlienta(page, klient.email, klient.heslo);
+      await page.goto("/ucet/clenska-sekce");
+      await expect(
+        page.getByText("Členská sekce je pro klienty s platným členstvím."),
+      ).toBeVisible();
+      await expect(page.getByText(clanek)).toHaveCount(0);
 
-    const odpoved = await page.goto(`/ucet/clenska-sekce/${radek!.id}`);
-    expect(odpoved?.status()).toBe(404);
-    await page.context().close();
-  });
+      const odpoved = await page.goto(`/ucet/clenska-sekce/${radek!.id}`);
+      expect(odpoved?.status()).toBe(404);
+      await page.context().close();
+    },
+  );
 });
 
 /** Webinář přímo v databázi. `zaHodin` záporné = už proběhl. */
@@ -312,11 +678,13 @@ async function zalozWebinar(
   courseId: string | null = null,
   zaHodin = 48,
 ) {
+  // Bez připomínky (5C): webinář „pro všechny“ by plánovač z jiného testu
+  // rozeslal všem klientům v testovací databázi a rozbil jim počty e-mailů.
   const [webinar] = await dotaz<{ id: string }>(
     `INSERT INTO "webinars" ("id", "title", "startsAt", "durationMinutes", "joinUrl", "audience",
-                             "courseId", "updatedAt")
+                             "courseId", "updatedAt", "remindersEnabled")
      VALUES ($1, $2, now() + make_interval(hours => $3), 60, 'https://example.com/webinar',
-             $4::"WebinarAudience", $5, now())
+             $4::"WebinarAudience", $5, now(), false)
      RETURNING "id"`,
     [`e2ewebinar${pripona()}${pripona()}`, nazev, zaHodin, publikum, courseId],
   );
@@ -365,6 +733,9 @@ test.describe("webináře očima administrátora", () => {
     expect(odznak).toBeTruthy();
 
     // Na iPhonu hláška o zápisu překryje tlačítko u řádku — počká se, až zmizí.
+    // Kurzor po kliknutí zůstává nad hláškou a ta pak odpočet pozastaví
+    // (sonner), takže by nezmizela nikdy — nejdřív ho odsunout stranou.
+    await page.mouse.move(0, 0);
     await expect(page.locator("[data-sonner-toast]")).toHaveCount(0);
 
     await page.getByRole("button", { name: `Zrušit účast: účast: ${klient.name}` }).click();
@@ -384,105 +755,129 @@ test.describe("webináře očima administrátora", () => {
 });
 
 test.describe("webináře v klientské části", () => {
-  test("vidí jen webináře pro sebe: všichni, členové, kupci kurzu", async ({ browser }) => {
-    const klient = await zalozKlientaSUctem(`Klient Publikum ${pripona()}`);
-    const produkt = await zalozProdukt(`E2E Kurz webinář ${pripona()}`);
-    const mujKurz = await zalozKurz(produkt, `Můj kurz ${pripona()}`, ["L1"]);
-    await zaplatProdukt(klient.id, produkt);
-    const ciziKurz = await zalozKurz(
-      await zalozProdukt(`E2E Kurz cizí web ${pripona()}`),
-      `Cizí kurz ${pripona()}`,
-      ["L1"],
-    );
+  test(
+    "vidí jen webináře pro sebe: všichni, členové, kupci kurzu",
+    { tag: "@telefon" },
+    async ({ browser }) => {
+      const klient = await zalozKlientaSUctem(`Klient Publikum ${pripona()}`);
+      const produkt = await zalozProdukt(`E2E Kurz webinář ${pripona()}`);
+      const mujKurz = await zalozKurz(produkt, `Můj kurz ${pripona()}`, ["L1"]);
+      await zaplatProdukt(klient.id, produkt);
+      const ciziKurz = await zalozKurz(
+        await zalozProdukt(`E2E Kurz cizí web ${pripona()}`),
+        `Cizí kurz ${pripona()}`,
+        ["L1"],
+      );
 
-    const vsichni = `Pro všechny ${pripona()}`;
-    const clenove = `Pro členy ${pripona()}`;
-    const kupciMoji = `Pro můj kurz ${pripona()}`;
-    const kupciCizi = `Pro cizí kurz ${pripona()}`;
-    const probehly = `Proběhlý ${pripona()}`;
-    await zalozWebinar(vsichni, "VSICHNI");
-    await zalozWebinar(clenove, "CLENOVE");
-    await zalozWebinar(kupciMoji, "KURZ", mujKurz);
-    await zalozWebinar(kupciCizi, "KURZ", ciziKurz);
-    const probehlyId = await zalozWebinar(probehly, "VSICHNI", null, -48);
-    await dotaz(
-      `INSERT INTO "webinar_attendance" ("id", "webinarId", "clientId")
+      const vsichni = `Pro všechny ${pripona()}`;
+      const clenove = `Pro členy ${pripona()}`;
+      const kupciMoji = `Pro můj kurz ${pripona()}`;
+      const kupciCizi = `Pro cizí kurz ${pripona()}`;
+      const probehly = `Proběhlý ${pripona()}`;
+      await zalozWebinar(vsichni, "VSICHNI");
+      await zalozWebinar(clenove, "CLENOVE");
+      await zalozWebinar(kupciMoji, "KURZ", mujKurz);
+      await zalozWebinar(kupciCizi, "KURZ", ciziKurz);
+      const probehlyId = await zalozWebinar(probehly, "VSICHNI", null, -48);
+      await dotaz(
+        `INSERT INTO "webinar_attendance" ("id", "webinarId", "clientId")
        VALUES (gen_random_uuid()::text, $1, $2)`,
-      [probehlyId, klient.id],
-    );
+        [probehlyId, klient.id],
+      );
 
-    const page = await prohlizecKlienta(browser);
-    await prihlasKlienta(page, klient.email, klient.heslo);
-    await page.getByRole("link", { name: "Webináře" }).click();
-    await expect(page.getByText(vsichni, { exact: true })).toBeVisible();
-    await expect(page.getByText(kupciMoji, { exact: true })).toBeVisible();
-    await expect(page.getByText(clenove)).toHaveCount(0);
-    await expect(page.getByText(kupciCizi)).toHaveCount(0);
-    await expect(page.getByRole("link", { name: "Připojit se" }).first()).toHaveAttribute(
-      "href",
-      "https://example.com/webinar",
-    );
-    // Proběhlý webinář jen v seznamu účasti, bez odkazu.
-    await expect(page.getByText("Webináře, kterých jste se zúčastnili")).toBeVisible();
-    await expect(page.getByText(probehly)).toBeVisible();
-    await bezVodorovnehoPosuvu(page);
+      const page = await prohlizecKlienta(browser);
+      await prihlasKlienta(page, klient.email, klient.heslo);
+      await page.getByRole("link", { name: "Webináře" }).click();
+      await expect(page.getByText(vsichni, { exact: true })).toBeVisible();
+      await expect(page.getByText(kupciMoji, { exact: true })).toBeVisible();
+      await expect(page.getByText(clenove)).toHaveCount(0);
+      await expect(page.getByText(kupciCizi)).toHaveCount(0);
+      await expect(page.getByRole("link", { name: "Připojit se" }).first()).toHaveAttribute(
+        "href",
+        "https://example.com/webinar",
+      );
+      // Proběhlý webinář jen v seznamu účasti, bez odkazu.
+      await expect(page.getByText("Webináře, kterých jste se zúčastnili")).toBeVisible();
+      await expect(page.getByText(probehly)).toBeVisible();
+      await bezVodorovnehoPosuvu(page);
 
-    // S platným členstvím přibude webinář pro členy.
-    await dejClenstvi(klient.id, 30);
-    await page.reload();
-    await expect(page.getByText(clenove, { exact: true })).toBeVisible();
-    await page.context().close();
-  });
+      // S platným členstvím přibude webinář pro členy.
+      await dejClenstvi(klient.id, 30);
+      await page.reload();
+      await expect(page.getByText(clenove, { exact: true })).toBeVisible();
+      await page.context().close();
+    },
+  );
 });
 
 test.describe("odznaky a karta klienta", () => {
-  test("lekce dají odznaky, aktivita 4 týdny taky; tým je vidí na kartě", async ({ browser }) => {
-    const klient = await zalozKlientaSUctem(`Klient Odznaky ${pripona()}`);
-    const produkt = await zalozProdukt(`E2E Kurz odznaky ${pripona()}`);
-    const nazev = `Odznakový kurz ${pripona()}`;
-    const kurzId = await zalozKurz(produkt, nazev, ["Jedna", "Dvě"]);
-    await zaplatProdukt(klient.id, produkt);
-    // Tři předchozí týdny v klientské části — čtvrtý přidá přihlášení.
-    for (const tydnu of [1, 2, 3]) {
-      await dotaz(
-        `INSERT INTO "client_active_weeks" ("clientId", "week")
+  test(
+    "lekce dají odznaky, aktivita 4 týdny taky; tým je vidí na kartě",
+    { tag: "@telefon" },
+    async ({ browser }) => {
+      const klient = await zalozKlientaSUctem(`Klient Odznaky ${pripona()}`);
+      const produkt = await zalozProdukt(`E2E Kurz odznaky ${pripona()}`);
+      const nazev = `Odznakový kurz ${pripona()}`;
+      const kurzId = await zalozKurz(produkt, nazev, ["Jedna", "Dvě"]);
+      await zaplatProdukt(klient.id, produkt);
+      // Tři předchozí týdny v klientské části — čtvrtý přidá přihlášení.
+      for (const tydnu of [1, 2, 3]) {
+        await dotaz(
+          `INSERT INTO "client_active_weeks" ("clientId", "week")
          VALUES ($1, to_char((now() AT TIME ZONE 'Europe/Prague') - make_interval(days => $2),
                              'IYYY-"W"IW'))`,
-        [klient.id, tydnu * 7],
-      );
-    }
+          [klient.id, tydnu * 7],
+        );
+      }
 
-    const page = await prohlizecKlienta(browser);
-    await prihlasKlienta(page, klient.email, klient.heslo);
+      const page = await prohlizecKlienta(browser);
+      await prihlasKlienta(page, klient.email, klient.heslo);
 
-    await page.goto(`/ucet/kurzy/${kurzId}`);
-    await page.getByRole("link", { name: "Začít první lekcí" }).click();
-    await page.getByRole("button", { name: "Označit jako hotovou" }).click();
-    await expect(page.getByRole("button", { name: "Hotovo — vrátit" })).toBeVisible();
-    await page.getByRole("link", { name: "Další lekce" }).click();
-    await page.getByRole("button", { name: "Označit jako hotovou" }).click();
-    await expect(page.getByRole("button", { name: "Hotovo — vrátit" })).toBeVisible();
+      await page.goto(`/ucet/kurzy/${kurzId}`);
+      // Na pomalém stroji (iPhone na GitHubu) klik může přijít dřív, než
+      // stránka ožije — opakuje se, dokud se lekce neotevře (18. 10. 2026).
+      await expect(async () => {
+        await page.getByRole("link", { name: "Začít první lekcí" }).click();
+        await expect(page.getByRole("heading", { name: "Jedna" })).toBeVisible({ timeout: 5_000 });
+      }).toPass({ timeout: 60_000 });
+      await page.getByRole("button", { name: "Označit jako hotovou" }).click();
+      await expect(page.getByRole("button", { name: "Hotovo — vrátit" })).toBeVisible();
+      await expect(async () => {
+        await page.getByRole("link", { name: "Další lekce" }).click();
+        await expect(page.getByRole("heading", { name: "Dvě" })).toBeVisible({ timeout: 5_000 });
+      }).toPass({ timeout: 60_000 });
+      await page.getByRole("button", { name: "Označit jako hotovou" }).click();
+      await expect(page.getByRole("button", { name: "Hotovo — vrátit" })).toBeVisible();
 
-    // Poslední lekce nemá Další, ale Domů — zpátky na přehled s odznaky
-    // (Jakub, 5. 10. 2026).
-    await expect(page.getByRole("link", { name: "Další lekce" })).toHaveCount(0);
-    await page.getByRole("link", { name: "Domů" }).click();
-    await expect(page).toHaveURL(/\/ucet$/);
-    const odznaky = page.getByRole("list", { name: "Odznaky" });
-    for (const odznak of ["První krok", "V půlce", "Kurz dokončen", "Vytrvalost"]) {
-      await expect(odznaky.getByText(odznak)).toBeVisible();
-    }
-    await expect(odznaky.getByText(nazev).first()).toBeVisible();
-    await page.context().close();
+      // Poslední lekce nemá Další, ale Domů — zpátky na přehled s odznaky
+      // (Jakub, 5. 10. 2026).
+      await expect(page.getByRole("link", { name: "Další lekce" })).toHaveCount(0);
+      await page.getByRole("link", { name: "Domů" }).click();
+      await expect(page).toHaveURL(/\/ucet$/);
+      // Medaile jsou vidět všechny (varianta B, 10. 10. 2026) — získané
+      // poznáme podle `data-ziskany`.
+      const odznaky = page.getByRole("list", { name: "Odznaky" });
+      for (const odznak of ["První krok", "V půlce", "Kurz dokončen", "Vytrvalost"]) {
+        await expect(odznaky.getByRole("listitem").filter({ hasText: odznak })).toHaveAttribute(
+          "data-ziskany",
+          "ano",
+        );
+      }
+      await expect(
+        odznaky.getByRole("listitem").filter({ hasText: "Pravidelný host" }),
+      ).toHaveAttribute("data-ziskany", "ne");
+      await expect(odznaky.getByText(nazev).first()).toBeVisible();
+      await page.context().close();
 
-    // Tým vidí postup a odznaky na kartě klienta.
-    const tym = await browser.newContext({ storageState: stavPrihlaseni("uzivatel") });
-    const karta = await tym.newPage();
-    await karta.goto(`/klienti/${klient.id}`);
-    await expect(karta.getByText(`${nazev} 2/2`)).toBeVisible();
-    await expect(
-      karta.getByRole("list", { name: "Odznaky" }).getByText("Kurz dokončen"),
-    ).toBeVisible();
-    await tym.close();
-  });
+      // Tým vidí postup a odznaky na kartě klienta.
+      const tym = await browser.newContext({ storageState: stavPrihlaseni("uzivatel") });
+      const karta = await tym.newPage();
+      await karta.goto(`/klienti/${klient.id}`);
+      await expect(karta.getByText(`${nazev} 2/2`)).toBeVisible();
+      await expect(
+        karta.getByRole("list", { name: "Odznaky" }).getByText("Kurz dokončen"),
+      ).toBeVisible();
+      await tym.close();
+    },
+  );
 });

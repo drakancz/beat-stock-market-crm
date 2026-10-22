@@ -5,6 +5,7 @@ import { UploadThingError } from "uploadthing/server";
 import { getViewer } from "@/lib/session";
 import { smiNahravat } from "@/lib/soubory";
 import { LIMIT_POPIS, MAX_POCET, POVOLENE_TYPY } from "@/lib/soubory-typy";
+import { jeUkazka, VYPNUTO_V_UKAZCE } from "@/lib/ukazka";
 
 /**
  * Domluva o nahrání souboru.
@@ -52,6 +53,7 @@ export const souboryRouter = {
   prilohy: f(NASTAVENI, { awaitServerData: false })
     .input(kamSchema)
     .middleware(async ({ input }) => {
+      if (jeUkazka()) throw new UploadThingError(VYPNUTO_V_UKAZCE);
       const viewer = await getViewer();
       if (!viewer) throw new UploadThingError("Nepřihlášeno.");
       if (viewer.chybiDvoufazove)

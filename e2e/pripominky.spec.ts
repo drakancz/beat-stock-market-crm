@@ -104,25 +104,29 @@ test.describe("připomínky úkolů", () => {
     await expect(page.getByText("Na dnes nic nezbývá.")).toBeVisible();
   });
 
-  test("zvoneček je na každé obrazovce a na telefonu nic nepřečnívá", async ({ page }) => {
-    const ja = await zalozUzivatele("uzivatel", "Vsude");
-    await zalozUkol(ja.id, `Vsude ${pripona()}`, -1);
-    await prihlas(page, ja.email, ja.heslo);
-    await expect(page).toHaveURL(/\/dashboard$/);
+  test(
+    "zvoneček je na každé obrazovce a na telefonu nic nepřečnívá",
+    { tag: "@telefon" },
+    async ({ page }) => {
+      const ja = await zalozUzivatele("uzivatel", "Vsude");
+      await zalozUkol(ja.id, `Vsude ${pripona()}`, -1);
+      await prihlas(page, ja.email, ja.heslo);
+      await expect(page).toHaveURL(/\/dashboard$/);
 
-    for (const adresa of ["/klienti", "/objednavky", "/profil"]) {
-      await page.goto(adresa);
-      await expect(zvonecek(page)).toHaveAccessibleName("Připomínky úkolů: 1 úkol, 1 po termínu");
-      await bezVodorovnehoPosuvu(page);
-    }
+      for (const adresa of ["/klienti", "/objednavky", "/profil"]) {
+        await page.goto(adresa);
+        await expect(zvonecek(page)).toHaveAccessibleName("Připomínky úkolů: 1 úkol, 1 po termínu");
+        await bezVodorovnehoPosuvu(page);
+      }
 
-    // Seznam se vejde i na úzký displej.
-    await zvonecek(page).click();
-    const okno = page.getByRole("dialog").filter({ hasText: "Připomínky úkolů" });
-    await expect(okno).toBeVisible();
-    const ramec = await okno.boundingBox();
-    const sirka = page.viewportSize()!.width;
-    expect(ramec!.x).toBeGreaterThanOrEqual(0);
-    expect(ramec!.x + ramec!.width).toBeLessThanOrEqual(sirka);
-  });
+      // Seznam se vejde i na úzký displej.
+      await zvonecek(page).click();
+      const okno = page.getByRole("dialog").filter({ hasText: "Připomínky úkolů" });
+      await expect(okno).toBeVisible();
+      const ramec = await okno.boundingBox();
+      const sirka = page.viewportSize()!.width;
+      expect(ramec!.x).toBeGreaterThanOrEqual(0);
+      expect(ramec!.x + ramec!.width).toBeLessThanOrEqual(sirka);
+    },
+  );
 });

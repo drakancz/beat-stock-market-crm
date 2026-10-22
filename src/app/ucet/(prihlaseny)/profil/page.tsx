@@ -9,6 +9,8 @@ import { verejnyKlicPush } from "@/lib/klient/oznameni";
 import { requireKlient } from "@/lib/klient/sezeni";
 
 import { DvoufazoveKlienta } from "./dvoufazove";
+import { FakturacniUdaje } from "./fakturace";
+import { MojeUdajeKeStazeni } from "./moje-udaje";
 import { OznameniKlienta } from "./oznameni";
 import { UdajeKlienta } from "./udaje";
 import { ZmenaHeslaKlienta } from "./zmena-hesla";
@@ -28,7 +30,19 @@ export default async function ProfilKlientaPage() {
   const [udaje, ucet] = await Promise.all([
     db.client.findUniqueOrThrow({
       where: { id: klient.clientId },
-      select: { name: true, email: true, phone: true, consentMarketingAt: true },
+      select: {
+        name: true,
+        email: true,
+        phone: true,
+        consentMarketingAt: true,
+        billingName: true,
+        billingStreet: true,
+        billingCity: true,
+        billingZip: true,
+        billingCountry: true,
+        billingIco: true,
+        billingDic: true,
+      },
     }),
     // Upozornění (3A, 4. 10. 2026) — vypínač a zařízení jen vlastního účtu.
     db.clientAccount.findUniqueOrThrow({
@@ -59,6 +73,17 @@ export default async function ProfilKlientaPage() {
           souhlas: udaje.consentMarketingAt !== null,
         }}
       />
+      <FakturacniUdaje
+        udaje={{
+          nazev: udaje.billingName ?? "",
+          ulice: udaje.billingStreet ?? "",
+          mesto: udaje.billingCity ?? "",
+          psc: udaje.billingZip ?? "",
+          zeme: udaje.billingCountry ?? "",
+          ico: udaje.billingIco ?? "",
+          dic: udaje.billingDic ?? "",
+        }}
+      />
       <OznameniKlienta
         zapnuto={ucet.notificationsEnabled}
         verejnyKlic={verejnyKlicPush()}
@@ -66,6 +91,7 @@ export default async function ProfilKlientaPage() {
       />
       <ZmenaHeslaKlienta />
       <DvoufazoveKlienta zapnuto={klient.twoFactorEnabled} />
+      <MojeUdajeKeStazeni />
     </>
   );
 }

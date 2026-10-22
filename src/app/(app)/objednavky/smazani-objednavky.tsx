@@ -70,7 +70,7 @@ export function SmazaniObjednavky({
             <AlertDescription className="text-xs leading-relaxed">
               {objednavka.zaplaceno
                 ? "Tahle objednávka je zaplacená. Smazáním zmizí i z tržeb v Cílech na Dashboardu — klientovi ale zaplacené peníze nikdo nevrátí."
-                : "Smaže se i seznam objednaných produktů. Klient, jeho portfolia ani hovory se tím nemění."}
+                : "Smaže se i seznam objednaných produktů. Klient se tím nemění."}
             </AlertDescription>
           </Alert>
 

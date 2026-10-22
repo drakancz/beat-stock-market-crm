@@ -3,6 +3,7 @@ import { Paperclip } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireViewer } from "@/lib/session";
 import { nactiSoubory, smiNahravat, smiVidet } from "@/lib/soubory";
+import { jeUkazka } from "@/lib/ukazka";
 import { kamNahravat } from "@/lib/uloziste";
 import type { AttachmentOwner } from "@/generated/prisma/enums";
 
@@ -53,6 +54,7 @@ export async function SekcePriloh({
       soubory={soubory}
       smiNahravat={muzeNahravat}
       uloziste={kamNahravat()}
+      ukazka={jeUkazka()}
       // Free tarif úložiště neumí soubory uzamknout (security.md).
       // U klienta se to říká důrazněji — jsou to údaje někoho, kdo
       // o tom neví (Jakub, 21. 9. 2026).

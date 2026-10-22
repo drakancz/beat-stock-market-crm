@@ -47,6 +47,8 @@ export type AuditniAkce =
   /// Přístup do programu — od 23. 9. 2026 u klienta. Starší záznamy
   /// `objednavka.pristup-zmenen` zůstávají v historii.
   | "klient.pristup-zmenen"
+  | "klient.stitek-pridan"
+  | "klient.stitek-odebran"
   /// Nový klient odeslaný do SmartEmailingu (Jakub, 13. 9. 2026).
   | "klient.smartemailing"
   | "klient.smartemailing-chyba"
@@ -77,9 +79,13 @@ export type AuditniAkce =
   | "klient.ucet-dvoufazove-vypnuto"
   /// Klient si v Mém profilu zapnul nebo vypnul upozornění (3A, 4. 10. 2026).
   | "klient.ucet-oznameni"
+  /// Klient si stáhl své údaje (JSON nebo PDF, 21. 10. 2026). Jen formát, nic z obsahu.
+  | "klient.ucet-export"
   /// Zpráva od administrátora do klientské části (3A, 4. 10. 2026).
   /// **Bez textu zprávy** — ten je v `client_messages`.
   | "klient.zprava-odeslana"
+  /// Portfolia zmizela 20. 10. 2026 — akce zůstávají kvůli starým záznamům
+  /// v Aktivitě, nic nového je nezapisuje.
   | "portfolio.zalozeno"
   | "portfolio.do-kose"
   | "portfolio.obnoveno"
@@ -93,6 +99,7 @@ export type AuditniAkce =
   | "broker.obnoven"
   | "broker.smazan"
   | "objednavka.stav-zmenen"
+  | "objednavka.pripomenuta"
   | "objednavka.pristup-zmenen"
   | "objednavka.poznamka-zmenena"
   | "objednavka.prijata"
@@ -108,6 +115,25 @@ export type AuditniAkce =
   | "zdroj.zalozen"
   | "zdroj.upraven"
   | "zdroj.sloucen"
+  | "stitek.zalozen"
+  | "stitek.upraven"
+  | "stitek.smazan"
+  | "slevovy-kod.zalozen"
+  | "slevovy-kod.upraven"
+  | "slevovy-kod.do-kose"
+  | "slevovy-kod.obnoven"
+  | "slevovy-kod.smazan"
+  /// Doporučení a odměny (Fáze 5A, 15. 10. 2026) — `src/lib/doporuceni.ts`.
+  | "doporucitel.zalozen"
+  | "doporucitel.upraven"
+  | "doporucitel.do-kose"
+  | "doporucitel.obnoven"
+  | "doporucitel.smazan"
+  | "doporuceni.zapsano"
+  | "odmena.vznikla"
+  | "odmena.zrusena"
+  | "odmena.vyplacena"
+  | "odmena.vyplaceni-zruseno"
   | "nastaveni.firma"
   | "nastaveni.emaily"
   | "nastaveni.zabezpeceni"
@@ -118,6 +144,23 @@ export type AuditniAkce =
   | "nastaveni.upozorneni"
   /// Komu a kolik dní předem chodí úkoly na prodloužení (Jakub, 24. 9. 2026).
   | "nastaveni.prodlouzeni"
+  | "nastaveni.pripominky-platby"
+  | "nastaveni.nechodi"
+  /// Pravidlo „když X, udělej Y“ zapnuto, vypnuto nebo nastaveno (5D, 18. 10. 2026).
+  | "pravidlo.zmeneno"
+  /// Vlastní pravidla (5D, 2. část, 19. 10. 2026) — jen administrátor.
+  | "pravidlo.zalozeno"
+  | "pravidlo.smazano"
+  /// Vlastní pole u klienta (5B, 18. 10. 2026) — seznam polí a hodnota u klienta (bez hodnoty).
+  | "pole.zalozeno"
+  | "pole.upraveno"
+  | "pole.smazano"
+  | "klient.pole-zmeneno"
+  /// Dotazy u lekcí (5C, 18. 10. 2026) — bez textu dotazu i odpovědi.
+  | "dotaz.polozen"
+  | "dotaz.stazen"
+  | "dotaz.zodpovezen"
+  | "dotaz.smazan"
   /// Ruční úprava konce platnosti produktu u klienta — jen administrátor.
   | "platnost.upravena"
   /// Sekce Chyby (Jakub, 15. 9. 2026): opakování a uzavření chyby.
@@ -160,7 +203,28 @@ export type AuditniAkce =
   | "webinar.upraven"
   | "webinar.smazan"
   | "webinar.ucast-zapsana"
-  | "webinar.ucast-zrusena";
+  | "webinar.ucast-zrusena"
+  /// Konzultace (5B, 19. 10. 2026): termíny mění administrátor, rezervuje
+  /// klient (bez „kdo“), zrušit smí klient do 24 h předem i administrátor.
+  | "konzultace.termin-vypsan"
+  | "konzultace.termin-smazan"
+  | "konzultace.rezervovana"
+  | "konzultace.zrusena"
+  | "konzultace.prelozena"
+  /// Odchozí webhooky (19. 10. 2026) — jen administrátor, tajemství nikdy.
+  /// Platební brána GoPay (19. 10. 2026) — vrácení peněz jen administrátor.
+  | "objednavka.platba-vracena"
+  /// Faktury (19. 10. 2026) — vystavení bez „kdo“ = CRM samo po zaplacení.
+  | "faktura.vystavena"
+  | "faktura.dobropis"
+  | "webhook.zalozen"
+  | "webhook.upraven"
+  | "webhook.smazan"
+  /// Google Kalendář pro konzultace (20. 10. 2026) — jen administrátor.
+  | "nastaveni.kalendar"
+  | "kviz.ulozen"
+  | "kviz.smazan"
+  | "certifikat.vydan";
 
 /**
  * Jak se druh změny jmenuje v Nastavení → Aktivita.
@@ -191,6 +255,8 @@ export const POPIS_AUDITU: Record<AuditniAkce, string> = {
   "klient.poznamka-upravena": "Oprava poznámky u klienta",
   "klient.poznamka-smazana": "Smazání poznámky u klienta",
   "klient.pristup-zmenen": "Změna přístupu do programu",
+  "klient.stitek-pridan": "Přidání štítku klientovi",
+  "klient.stitek-odebran": "Odebrání štítku klientovi",
   "klient.smartemailing": "Odeslání klienta do SmartEmailingu",
   "klient.smartemailing-chyba": "Neúspěšné odeslání do SmartEmailingu",
   "klient.smartemailing-odhlasen": "Odhlášení klienta ve SmartEmailingu",
@@ -209,6 +275,7 @@ export const POPIS_AUDITU: Record<AuditniAkce, string> = {
   "klient.ucet-dvoufazove-zapnuto": "Klient si zapnul dvoufázové ověření",
   "klient.ucet-dvoufazove-vypnuto": "Klient si vypnul dvoufázové ověření",
   "klient.ucet-oznameni": "Klient si změnil upozornění",
+  "klient.ucet-export": "Klient si stáhl své údaje",
   "klient.zprava-odeslana": "Zpráva klientovi do klientské části",
   "klient.neni-duplicita": "Potvrzení, že klienti nejsou duplicita",
   "portfolio.zalozeno": "Založení portfolia",
@@ -221,6 +288,7 @@ export const POPIS_AUDITU: Record<AuditniAkce, string> = {
   "broker.obnoven": "Obnovení brokera",
   "broker.smazan": "Trvalé smazání brokera",
   "objednavka.stav-zmenen": "Změna stavu objednávky",
+  "objednavka.pripomenuta": "Připomínka platby klientovi",
   "objednavka.pristup-zmenen": "Změna přístupu do programu",
   "objednavka.poznamka-zmenena": "Změna poznámky u objednávky",
   "objednavka.prijata": "Přijetí objednávky z Landing Page",
@@ -236,6 +304,24 @@ export const POPIS_AUDITU: Record<AuditniAkce, string> = {
   "zdroj.zalozen": "Založení zdroje klientů",
   "zdroj.upraven": "Úprava zdroje klientů",
   "zdroj.sloucen": "Sloučení zdrojů klientů",
+  "stitek.zalozen": "Založení štítku",
+  "stitek.upraven": "Úprava štítku",
+  "stitek.smazan": "Smazání štítku",
+  "slevovy-kod.zalozen": "Založení slevového kódu",
+  "slevovy-kod.upraven": "Úprava slevového kódu",
+  "slevovy-kod.do-kose": "Smazání slevového kódu",
+  "slevovy-kod.obnoven": "Obnovení slevového kódu",
+  "slevovy-kod.smazan": "Trvalé smazání slevového kódu",
+  "doporucitel.zalozen": "Založení doporučitele",
+  "doporucitel.upraven": "Úprava doporučitele",
+  "doporucitel.do-kose": "Smazání doporučitele",
+  "doporucitel.obnoven": "Obnovení doporučitele",
+  "doporucitel.smazan": "Trvalé smazání doporučitele",
+  "doporuceni.zapsano": "Klient přivedený doporučitelem",
+  "odmena.vznikla": "Vznik odměny doporučiteli",
+  "odmena.zrusena": "Zrušení nevyplacené odměny",
+  "odmena.vyplacena": "Odměna doporučiteli vyplacena",
+  "odmena.vyplaceni-zruseno": "Zrušení označení „vyplaceno“",
   "nastaveni.firma": "Změna údajů firmy",
   "nastaveni.emaily": "Změna nastavení e-mailů",
   "nastaveni.zabezpeceni": "Změna zabezpečení",
@@ -244,6 +330,19 @@ export const POPIS_AUDITU: Record<AuditniAkce, string> = {
   "nastaveni.smartemailing-webhook": "Změna příjmu odhlášení ze SmartEmailingu",
   "nastaveni.upozorneni": "Změna upozornění na chyby",
   "nastaveni.prodlouzeni": "Změna nastavení prodloužení",
+  "nastaveni.pripominky-platby": "Změna připomínek platby",
+  "nastaveni.nechodi": "Změna hranice „platí, ale nechodí“",
+  "pravidlo.zmeneno": "Změna pravidla (když X, udělej Y)",
+  "pravidlo.zalozeno": "Nové vlastní pravidlo",
+  "pravidlo.smazano": "Smazání vlastního pravidla",
+  "pole.zalozeno": "Založení vlastního pole",
+  "pole.upraveno": "Úprava vlastního pole",
+  "pole.smazano": "Smazání vlastního pole",
+  "klient.pole-zmeneno": "Změna vlastního pole u klienta",
+  "dotaz.polozen": "Dotaz klienta u lekce",
+  "dotaz.stazen": "Klient stáhl dotaz u lekce",
+  "dotaz.zodpovezen": "Odpověď na dotaz u lekce",
+  "dotaz.smazan": "Smazání dotazu u lekce",
   "platnost.upravena": "Ruční úprava platnosti produktu",
   "chyba.znovu-spustena": "Opakování chyby",
   "chyba.uzavrena": "Uzavření chyby",
@@ -278,6 +377,21 @@ export const POPIS_AUDITU: Record<AuditniAkce, string> = {
   "webinar.smazan": "Smazání webináře",
   "webinar.ucast-zapsana": "Zápis účasti na webináři",
   "webinar.ucast-zrusena": "Zrušení účasti na webináři",
+  "konzultace.termin-vypsan": "Nový termín konzultace",
+  "konzultace.termin-smazan": "Smazání termínu konzultace",
+  "konzultace.rezervovana": "Rezervace konzultace",
+  "konzultace.zrusena": "Zrušení rezervace konzultace",
+  "konzultace.prelozena": "Přeložení konzultace",
+  "objednavka.platba-vracena": "Vrácení platby přes bránu",
+  "faktura.vystavena": "Vystavení faktury",
+  "faktura.dobropis": "Vystavení dobropisu",
+  "webhook.zalozen": "Nový webhook",
+  "webhook.upraven": "Úprava webhooku",
+  "webhook.smazan": "Smazání webhooku",
+  "nastaveni.kalendar": "Změna napojení na Google Kalendář",
+  "kviz.ulozen": "Uložení kvízu u lekce",
+  "kviz.smazan": "Smazání kvízu u lekce",
+  "certifikat.vydan": "Vydání certifikátu o absolvování kurzu",
 };
 
 interface Zaznam {

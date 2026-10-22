@@ -65,11 +65,15 @@ a `ADMINISTRATOR`. Uvnitř CRM proto vidí všechny klienty každý přihlášen
 
 ## 6. Souhlasy od prvního dne
 
-U každého klienta se eviduje souhlas s marketingem a s nahráváním hovoru, včetně
-data. Dodělávat to zpětně na stovkách kontaktů nejde.
+U každého klienta se eviduje souhlas s marketingem, včetně data. Dodělávat to
+zpětně na stovkách kontaktů nejde.
 
 **Co to znamená v kódu:** bez zaznamenaného souhlasu se nesmí odeslat marketingové
-sdělení ani uložit nahrávka hovoru. Kontrola patří na server.
+sdělení. Kontrola patří na server.
+
+**Změna (Jakub, 20. 10. 2026):** hovory ani nahrávky v CRM nejsou, souhlas
+s nahráváním hovoru se proto přestal evidovat. Kdyby se nahrávky někdy
+vracely, souhlas s datem musí přijít s nimi.
 
 ## 7. Auditní log se sbírá od prvního dne
 

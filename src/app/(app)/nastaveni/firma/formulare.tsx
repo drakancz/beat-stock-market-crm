@@ -49,6 +49,7 @@ export interface UdajeFirmy {
   ico: string | null;
   dic: string | null;
   address: string | null;
+  bankAccount: string | null;
   contactEmail: string | null;
   vatPayer: boolean;
 }
@@ -101,6 +102,18 @@ export function FormularFirmy({ firma }: { firma: UdajeFirmy }) {
           defaultValue={firma.address ?? ""}
           maxLength={200}
           placeholder="Ulice 1, 110 00 Praha"
+        />
+      </div>
+
+      {/* Bankovní účet na fakturu (19. 10. 2026) — nepovinný, platí se branou. */}
+      <div className="space-y-2">
+        <Label htmlFor="bankAccount">Bankovní účet (na faktury)</Label>
+        <Input
+          id="bankAccount"
+          name="bankAccount"
+          defaultValue={firma.bankAccount ?? ""}
+          maxLength={60}
+          placeholder="123456789/0100"
         />
       </div>
 

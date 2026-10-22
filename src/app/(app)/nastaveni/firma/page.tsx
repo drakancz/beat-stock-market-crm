@@ -41,6 +41,7 @@ export default async function FirmaPage() {
               ico: nastaveni.ico,
               dic: nastaveni.dic,
               address: nastaveni.address,
+              bankAccount: nastaveni.bankAccount,
               contactEmail: nastaveni.contactEmail,
               vatPayer: nastaveni.vatPayer,
             }}

@@ -103,7 +103,7 @@ for (const role of ["admin", "uzivatel"] as const satisfies RoleTestu[]) {
       await expect(page.getByText("veřejnou adresu")).toHaveCount(0);
     });
 
-    test("na telefonu nic nepřečnívá", async ({ page }) => {
+    test("na telefonu nic nepřečnívá", { tag: "@telefon" }, async ({ page }) => {
       await page.goto("/profil");
       await expect(page.getByText("Přílohy", { exact: true })).toBeVisible();
       await bezVodorovnehoPosuvu(page);
@@ -285,6 +285,16 @@ test.describe("nahrání k cizímu záznamu", () => {
     await uzivatel.close();
 
     expect((await request.post(adresa, pozadavek)).status()).toBe(401);
+
+    // Z cizí stránky (jiný Origin) se nenahraje nic ani do vlastního profilu.
+    const ucty = JSON.parse(await readFile(SOUBOR_UCTU, "utf8")) as Record<string, { id: string }>;
+    const vlastni = await browser.newContext({ storageState: stavPrihlaseni("uzivatel") });
+    const cizi = await vlastni.request.post(
+      `/api/soubory?typ=UZIVATEL&id=${encodeURIComponent(ucty.uzivatel!.id)}`,
+      { ...pozadavek, headers: { ...pozadavek.headers, Origin: "https://cizi-stranka.example" } },
+    );
+    expect(cizi.status()).toBe(403);
+    await vlastni.close();
 
     const zapsane = await dotaz(`SELECT 1 FROM "attachments" WHERE "ownerId" = $1`, [kolega.id]);
     expect(zapsane).toHaveLength(0);

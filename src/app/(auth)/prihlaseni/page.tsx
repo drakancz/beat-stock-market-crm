@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getViewer } from "@/lib/session";
+import { jeUkazka, UKAZKOVY_TYM } from "@/lib/ukazka";
 import { overDatabazi } from "@/lib/zdravi";
 
 import { PrihlaseniForm } from "./prihlaseni-form";
@@ -45,7 +46,7 @@ function Obsah() {
       </CardHeader>
       <CardContent>
         <Suspense fallback={<Skeleton className="h-64 w-full" />}>
-          <PrihlaseniForm />
+          <PrihlaseniForm ukazka={jeUkazka() ? UKAZKOVY_TYM : undefined} />
         </Suspense>
       </CardContent>
     </Card>

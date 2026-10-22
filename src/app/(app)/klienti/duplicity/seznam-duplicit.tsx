@@ -176,9 +176,8 @@ export function SlouceniDialog({
         <DialogHeader>
           <DialogTitle>Sloučit dvě karty klienta</DialogTitle>
           <DialogDescription>
-            Vyber kartu, která zůstane. Z druhé se na ni přesunou objednávky, poznámky, hovory,
-            úkoly, přílohy, brokeři i platnost členství.{" "}
-            <strong>Tuhle akci nelze vzít zpět.</strong>
+            Vyber kartu, která zůstane. Z druhé se na ni přesunou objednávky, poznámky, úkoly,
+            přílohy, brokeři i platnost členství. <strong>Tuhle akci nelze vzít zpět.</strong>
           </DialogDescription>
         </DialogHeader>
 

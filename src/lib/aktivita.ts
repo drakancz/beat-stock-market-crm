@@ -71,7 +71,7 @@ export const DRUHY_AKTIVITY: { id: DruhAktivity; label: string }[] = [
   { id: "prihlaseni", label: "Přihlášení a odhlášení" },
   { id: "neuspesne", label: "Neúspěšná přihlášení" },
   { id: "obrazovky", label: "Otevřené obrazovky" },
-  { id: "mcp", label: "Dotazy přes AI (MCP)" },
+  { id: "mcp", label: "Dotazy přes AI (MCP a asistent)" },
   { id: "zmeny", label: "Změny" },
 ];
 
@@ -80,7 +80,7 @@ const DRUHY_UDALOSTI: Record<DruhAktivity, UserEventKind[]> = {
   prihlaseni: ["PRIHLASENI", "ODHLASENI", "NEUSPESNE_PRIHLASENI"],
   neuspesne: ["NEUSPESNE_PRIHLASENI"],
   obrazovky: ["ZOBRAZENI"],
-  mcp: ["MCP"],
+  mcp: ["MCP", "ASISTENT"],
   zmeny: [],
 };
 
@@ -132,9 +132,6 @@ export interface SouhrnCloveka {
   minutVAplikaci: number;
   obrazovek: number;
   zmen: number;
-  hovoru: number;
-  /** Součet délek hovorů zapsaných v období. */
-  minutHovoru: number;
   neuspesnych: number;
 }
 
@@ -173,7 +170,7 @@ function odhadCasu(casy: number[]): { sezeni: number; minut: number } {
 export async function nactiSouhrnAktivity(obdobi: Obdobi): Promise<SouhrnCloveka[]> {
   const vObdobi = { gte: obdobi.od, lt: obdobi.do };
 
-  const [lide, udalosti, zmeny, hovory, prihlaseni] = await Promise.all([
+  const [lide, udalosti, zmeny, prihlaseni] = await Promise.all([
     db.user.findMany({ select: { id: true, name: true, role: true, deletedAt: true } }),
     db.userEvent.findMany({
       where: { at: vObdobi },
@@ -182,13 +179,6 @@ export async function nactiSouhrnAktivity(obdobi: Obdobi): Promise<SouhrnCloveka
     db.auditLogEntry.findMany({
       where: { at: vObdobi, userId: { not: null } },
       select: { userId: true, at: true },
-    }),
-    // Hovory v koši se nepočítají, stejně jako všude jinde.
-    db.call.groupBy({
-      by: ["userId"],
-      where: { at: vObdobi, deletedAt: null },
-      _count: { _all: true },
-      _sum: { durationMin: true },
     }),
     db.userEvent.groupBy({
       by: ["userId"],
@@ -211,8 +201,6 @@ export async function nactiSouhrnAktivity(obdobi: Obdobi): Promise<SouhrnCloveka
       minutVAplikaci: 0,
       obrazovek: 0,
       zmen: 0,
-      hovoru: 0,
-      minutHovoru: 0,
       neuspesnych: 0,
     });
     casy.set(clovek.id, []);
@@ -229,7 +217,7 @@ export async function nactiSouhrnAktivity(obdobi: Obdobi): Promise<SouhrnCloveka
     }
     // Dotaz přes AI není čas strávený v aplikaci — AI se ptá sama
     // a rychle za sebou, odhad by vyšel nesmyslně.
-    if (udalost.kind === "MCP") continue;
+    if (udalost.kind === "MCP" || udalost.kind === "ASISTENT") continue;
     if (udalost.kind === "ZOBRAZENI") radek.obrazovek += 1;
     casy.get(udalost.userId)?.push(udalost.at.getTime());
   }
@@ -239,13 +227,6 @@ export async function nactiSouhrnAktivity(obdobi: Obdobi): Promise<SouhrnCloveka
     if (!radek) continue;
     radek.zmen += 1;
     casy.get(radek.id)?.push(zmena.at.getTime());
-  }
-
-  for (const skupina of hovory) {
-    const radek = radky.get(skupina.userId);
-    if (!radek) continue;
-    radek.hovoru = skupina._count._all;
-    radek.minutHovoru = skupina._sum.durationMin ?? 0;
   }
 
   for (const skupina of prihlaseni) {
@@ -262,9 +243,7 @@ export async function nactiSouhrnAktivity(obdobi: Obdobi): Promise<SouhrnCloveka
   // Smazaní kolegové jen tehdy, když v období něco dělali — jinak do
   // přehledu týmu nepatří (stejně jako nikde jinde).
   return [...radky.values()]
-    .filter(
-      (radek) => !radek.smazany || radek.sezeni + radek.zmen + radek.hovoru + radek.neuspesnych > 0,
-    )
+    .filter((radek) => !radek.smazany || radek.sezeni + radek.zmen + radek.neuspesnych > 0)
     .sort((a, b) => b.minutVAplikaci - a.minutVAplikaci || a.name.localeCompare(b.name, "cs"));
 }
 
@@ -331,9 +310,28 @@ function popisObrazovky(
 function kdoBezPrihlaseni(akce: string): string {
   if (akce === "klient.odhlasen-ze-smartemailingu") return "SmartEmailing (webhook)";
   if (akce.startsWith("klient.ucet-")) return "klient (klientská část)";
-  // Úkoly bez uživatele zakládá a uklízí hlídání platnosti členství
-  // (`src/lib/platnost.ts`, Jakub 24. 9. 2026).
-  if (akce.startsWith("ukol.")) return "CRM (hlídání platnosti)";
+  // Certifikát se vydá sám, když klient dokončí kurz (Fáze 5C, 11. 10. 2026).
+  if (akce === "certifikat.vydan") return "klient (klientská část)";
+  // Dotaz u lekce klient pokládá a stahuje sám (5C, 18. 10. 2026).
+  if (akce === "dotaz.polozen" || akce === "dotaz.stazen") return "klient (klientská část)";
+  // Konzultaci rezervuje, překládá a ruší klient sám (5B, 19. 10. 2026);
+  // administrátor má u zrušení vlastní jméno.
+  if (akce.startsWith("konzultace.")) return "klient (klientská část)";
+  if (akce === "objednavka.pripomenuta") return "CRM (připomínka platby)";
+  // Zaplacení objednávky ověřené u platební brány (19. 10. 2026).
+  if (akce === "objednavka.stav-zmenen") return "GoPay (platební brána)";
+  // Úkoly bez uživatele zakládá a uklízí CRM samo — hlídání platnosti
+  // členství (`platnost.ts`, 24. 9. 2026) a připomínka platby
+  // (`pripominka-platby.ts`, 11. 10. 2026).
+  if (akce.startsWith("ukol.")) return "CRM (automatický úkol)";
+  // Štítek a zpráva bez uživatele = pravidlo „když X, udělej Y“ (5D, 18. 10. 2026).
+  if (
+    akce === "klient.stitek-pridan" ||
+    akce === "klient.stitek-odebran" ||
+    akce === "klient.zprava-odeslana"
+  ) {
+    return "CRM (pravidlo)";
+  }
   return akce.includes("z-webu") || akce.startsWith("klient.smartemailing")
     ? "web (rozhraní pro leady)"
     : "bez přihlášení (z odkazu)";
@@ -364,7 +362,7 @@ export async function nactiSeznamAktivity(filtr: FiltrAktivity) {
 
   const druhy = filtr.druh
     ? DRUHY_UDALOSTI[filtr.druh]
-    : DRUHY_UDALOSTI.prihlaseni.concat("ZOBRAZENI", "MCP");
+    : DRUHY_UDALOSTI.prihlaseni.concat("ZOBRAZENI", "MCP", "ASISTENT");
   const vcetneZmen = !filtr.druh || filtr.druh === "zmeny";
 
   const kdeUdalosti: Prisma.UserEventWhereInput = {
@@ -440,6 +438,15 @@ export async function nactiSeznamAktivity(filtr: FiltrAktivity) {
               udalost.clientId && udalost.client && !udalost.client.deletedAt
                 ? `/klienti/${udalost.clientId}`
                 : null,
+          };
+        case "ASISTENT":
+          // V `detail` jsou použité nástroje, nikdy obsah otázky.
+          return {
+            ...zaklad,
+            druh: "mcp",
+            titulek: USER_EVENT_LABEL.ASISTENT,
+            popis: udalost.detail,
+            odkaz: null,
           };
         case "NEUSPESNE_PRIHLASENI":
           return {

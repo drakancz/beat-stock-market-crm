@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { formatDatumCas } from "@/lib/format";
 import { nactiNastaveni } from "@/lib/nastaveni";
 import { requireAdmin } from "@/lib/session";
+import { jeUkazkovyTym } from "@/lib/ukazka";
 
 import { FormularUpozorneni } from "./formular";
 
@@ -22,7 +23,9 @@ export const dynamic = "force-dynamic";
  * a seznam, komu chodí. Samotné odesílání je v `src/lib/upozorneni-chyb.ts`.
  */
 export default async function UpozorneniPage() {
-  await requireAdmin();
+  const admin = await requireAdmin();
+  // Ukázkový účet e-maily kolegů nevidí (src/lib/ukazka.ts).
+  const ukazka = jeUkazkovyTym(admin.email);
 
   const [nastaveni, administratori] = await Promise.all([
     nactiNastaveni(),
@@ -81,7 +84,9 @@ export default async function UpozorneniPage() {
                 className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 first:pt-0 last:pb-0"
               >
                 <span className="text-sm font-medium">{clovek.name}</span>
-                <span className="text-muted-foreground text-xs">{clovek.email}</span>
+                {!ukazka && (
+                  <span className="text-muted-foreground text-xs">{clovek.email}</span>
+                )}
               </li>
             ))}
           </ul>

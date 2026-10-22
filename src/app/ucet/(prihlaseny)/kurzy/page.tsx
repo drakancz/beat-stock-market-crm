@@ -67,6 +67,14 @@ export default async function KurzyKlientaPage() {
               {ostatni.map((kurz) => (
                 <li key={kurz.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
                   <span className="min-w-0 flex-1 font-medium">{kurz.title}</span>
+                  {kurz.productId && (
+                    <Link
+                      href={`/ucet/koupit?produkt=${kurz.productId}`}
+                      className="text-primary font-medium underline-offset-4 hover:underline"
+                    >
+                      Koupit
+                    </Link>
+                  )}
                   {kurz.url && (
                     <a
                       href={kurz.url}

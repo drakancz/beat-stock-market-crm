@@ -1,4 +1,5 @@
 import { requireViewer } from "@/lib/session";
+import { pocetCekajicichDotazu } from "@/lib/vzdelavani/dotazy";
 
 import { PodmenuVzdelavani } from "./podmenu";
 
@@ -14,6 +15,7 @@ export const dynamic = "force-dynamic";
 
 export default async function VzdelavaniLayout({ children }: LayoutProps<"/vzdelavani">) {
   await requireViewer();
+  const cekajicichDotazu = await pocetCekajicichDotazu();
 
   return (
     <>
@@ -25,7 +27,7 @@ export default async function VzdelavaniLayout({ children }: LayoutProps<"/vzdel
         </p>
       </div>
 
-      <PodmenuVzdelavani />
+      <PodmenuVzdelavani cekajicichDotazu={cekajicichDotazu} />
 
       {children}
     </>

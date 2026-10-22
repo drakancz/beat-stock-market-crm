@@ -22,6 +22,7 @@ import { requireViewer } from "@/lib/session";
 import { PRODUCT_KIND_LABEL } from "@/lib/types";
 
 import { ProduktDialog } from "./produkt-dialog";
+import { ZalozkyProduktu } from "./zalozky";
 
 export const metadata: Metadata = { title: "Produkty" };
 
@@ -44,12 +45,13 @@ export default async function ProduktyPage() {
         <div>
           <h2 className="text-2xl font-semibold">Produkty</h2>
           <p className="text-muted-foreground mt-1 text-sm">
-            Katalog kurzů, členství a konzultací. U hovoru se zapisuje zájem o konkrétní produkt, ne
-            obecná poznámka.
+            Katalog kurzů, členství a konzultací.
           </p>
         </div>
         {muzeZakladat && <ProduktDialog sazby={sazbyKVyberu} />}
       </div>
+
+      <ZalozkyProduktu jeAdmin={muzeZakladat} />
 
       <Card>
         <CardHeader>

@@ -29,7 +29,9 @@ const ZNACKA_UTF8 = "﻿";
  */
 export function bunkaCsv(hodnota: string | number | null | undefined): string {
   const text = hodnota === null || hodnota === undefined ? "" : String(hodnota);
-  const bezpecny = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+  // Čisté číslo se znaménkem (záporná částka dobropisu) vzorcem být nemůže.
+  const cislo = /^-?\d+(?:[.,]\d+)?$/.test(text);
+  const bezpecny = !cislo && /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
   return `"${bezpecny.replaceAll('"', '""')}"`;
 }
 

@@ -47,6 +47,7 @@ const firmaSchema = z.object({
     .refine((text) => text === "" || /^CZ\d{8,10}$/.test(text), "DIČ má tvar CZ a 8 až 10 číslic.")
     .transform((text) => (text === "" ? null : text)),
   address: nepovinny(200, "Adresa je příliš dlouhá."),
+  bankAccount: nepovinny(60, "Číslo účtu je příliš dlouhé."),
   contactEmail: z
     .string()
     .trim()
@@ -102,6 +103,7 @@ export async function ulozFirmu(formData: FormData): Promise<Vysledek> {
     ico: formData.get("ico") ?? "",
     dic: formData.get("dic") ?? "",
     address: formData.get("address") ?? "",
+    bankAccount: formData.get("bankAccount") ?? "",
     contactEmail: formData.get("contactEmail") ?? "",
     vatPayer: formData.get("vatPayer") === "on",
   });

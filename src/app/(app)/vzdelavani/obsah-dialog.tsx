@@ -38,7 +38,14 @@ export function ObsahDialog({
   druh: "lekce" | "článek";
   /** Skrytá pole formuláře (id kurzu, id záznamu). */
   skryte: Record<string, string>;
-  obsah?: { title: string; body: string; videoUrl: string; zverejneno?: boolean };
+  obsah?: {
+    title: string;
+    body: string;
+    videoUrl: string;
+    zverejneno?: boolean;
+    /** Postupné odemykání lekce (5C, 18. 10. 2026); den jako `RRRR-MM-DD`. */
+    odemceni?: { dni: string; od: string; poPredchozi: boolean };
+  };
   ulozit: (
     formData: FormData,
   ) => Promise<{ ok: true; zprava: string } | { ok: false; chyba: string }>;
@@ -154,6 +161,50 @@ export function ObsahDialog({
                 maxLength={50_000}
               />
             </div>
+
+            {druh === "lekce" && (
+              // Postupné odemykání (Fáze 5C, Jakub 18. 10. 2026) — co je
+              // vyplněné, musí platit všechno. Hlídá to server.
+              <fieldset className="space-y-3 rounded-md border p-3">
+                <legend className="px-1 text-sm font-medium">Kdy se lekce klientovi otevře</legend>
+                <p className="text-muted-foreground text-xs">
+                  Nic nevyplněného = hned po zakoupení. Když vyplníš víc, musí platit všechno.
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor={`${idFormulare}-dni`}>Dní po zakoupení kurzu</Label>
+                    <Input
+                      id={`${idFormulare}-dni`}
+                      name="unlockAfterDays"
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      max={365}
+                      placeholder="hned"
+                      defaultValue={obsah?.odemceni?.dni}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor={`${idFormulare}-od`}>Nejdřív od data</Label>
+                    <Input
+                      id={`${idFormulare}-od`}
+                      name="unlockOn"
+                      type="date"
+                      defaultValue={obsah?.odemceni?.od}
+                    />
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    name="unlockAfterPrevious"
+                    defaultChecked={obsah?.odemceni?.poPredchozi}
+                    className="accent-primary size-4"
+                  />
+                  Až po dokončení předchozí lekce
+                </label>
+              </fieldset>
+            )}
 
             {sezverejnenim && (
               <div

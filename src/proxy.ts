@@ -41,6 +41,10 @@ const KLIENT_VEREJNE = [
   "/ucet/nove-heslo",
   "/ucet/zasady",
   "/ucet/podminky",
+  // Obchodní podmínky (20. 10. 2026) — zákazník je má vidět před nákupem.
+  "/ucet/obchodni-podminky",
+  // Návrat z platební brány (19. 10. 2026) — jen číslo objednávky a stav.
+  "/ucet/platba",
 ];
 const COOKIE_KLIENTA = ["bsm-klient", "__Host-bsm-klient"];
 

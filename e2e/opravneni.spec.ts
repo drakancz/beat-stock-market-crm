@@ -17,19 +17,16 @@ import { dotaz, menu, stavPrihlaseni, type RoleTestu } from "./pomocne";
  * Nepovolaný dostane 404, ne „nemáte oprávnění".
  */
 
-const MENU_PRO_VSECHNY = ["Dashboard", "Klienti", "Objednávky", "Produkty"];
+const MENU_PRO_VSECHNY = ["Dashboard", "Klienti", "Objednávky", "Produkty", "Konzultace"];
 
 /**
  * Z menu schované (Jakub, 24. 9. 2026), ale stránky dál existují —
  * pro obě role.
  */
-const SKRYTE_V_MENU = [
-  { polozka: "Portfolia", adresa: "/portfolia" },
-  { polozka: "Brokeři", adresa: "/brokeri" },
-  { polozka: "Hovory", adresa: "/hovory" },
-];
+const SKRYTE_V_MENU = [{ polozka: "Brokeři", adresa: "/brokeri" }];
 
-const MENU_JEN_ADMIN = ["Správa", "Smazané", "SmartEmailing", "Nastavení"];
+// Asistent AI jen pro administrátora (Jakub, 10. 10. 2026).
+const MENU_JEN_ADMIN = ["Asistent AI", "Správa", "Smazané", "SmartEmailing", "Nastavení"];
 
 const JEN_ADMIN = [
   "/sprava",
@@ -42,6 +39,13 @@ const JEN_ADMIN = [
   "/nastaveni/aktivita",
   // Komu chodí úkoly na prodloužení členství (Jakub, 24. 9. 2026).
   "/nastaveni/prodlouzeni",
+  // Odchozí webhooky (19. 10. 2026).
+  "/nastaveni/webhooky",
+  // Google Kalendář pro konzultace (20. 10. 2026).
+  "/nastaveni/kalendar",
+  "/asistent",
+  // Doporučitelé a odměny (5A, 15. 10. 2026).
+  "/produkty/doporucitele",
 ];
 
 /** Ukázkový klient Petry Dvořákové ze seedu — cizí pro zkušební účty. */
@@ -159,6 +163,14 @@ test.describe("administrátor", () => {
       await expect(page.getByText("Tady nic není")).toHaveCount(0);
     }
   });
+
+  test("průvodce ukázkou mimo ukázkový režim nevidí", async ({ page }) => {
+    // Jen ukázkové účty v ukázkovém režimu (Jakub, 22. 10. 2026).
+    await page.goto("/dashboard");
+    await expect(page.getByText(/Vítej, /)).toBeVisible();
+    await expect(page.getByText("Co si tu vyzkoušet")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Co si vyzkoušet/ })).toHaveCount(0);
+  });
 });
 
 test.describe("sekce schované z menu", () => {
@@ -166,7 +178,9 @@ test.describe("sekce schované z menu", () => {
     test.describe(role, () => {
       test.use({ storageState: stavPrihlaseni(role) });
 
-      test("Portfolia, Brokeři a Hovory v menu nejsou, stránky fungují", async ({ page }) => {
+      test("Brokeři v menu nejsou, stránka funguje; Hovory ani Portfolia už nejsou", async ({
+        page,
+      }) => {
         await page.goto("/dashboard");
         const panel = await menu(page);
         for (const { polozka } of SKRYTE_V_MENU) {
@@ -181,6 +195,14 @@ test.describe("sekce schované z menu", () => {
             page.locator("header").getByText(polozka, { exact: true }).first(),
           ).toBeVisible();
         }
+
+        // Hovory z CRM zmizely úplně (Jakub, 20. 10. 2026) — ani v menu,
+        // ani na adrese.
+        await expect(panel.getByRole("link", { name: "Hovory", exact: true })).toHaveCount(0);
+        expect((await page.goto("/hovory"))?.status(), "/hovory už neexistuje").toBe(404);
+        // Portfolia taky (Jakub, 20. 10. 2026).
+        await expect(panel.getByRole("link", { name: "Portfolia", exact: true })).toHaveCount(0);
+        expect((await page.goto("/portfolia"))?.status(), "/portfolia už neexistuje").toBe(404);
       });
     });
   }

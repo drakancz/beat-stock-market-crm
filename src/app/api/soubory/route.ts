@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { jeCiziPuvod } from "@/lib/puvod";
 import { getViewer } from "@/lib/session";
 import { smiNahravat } from "@/lib/soubory";
 import { prijmiSouborDoS3 } from "@/lib/soubory-prijem";
@@ -40,8 +41,7 @@ export async function POST(request: Request) {
     return odpoved(403, { ok: false, chyba: "Nejdřív si zapni dvoufázové ověření." });
   }
 
-  const puvod = request.headers.get("origin");
-  if (puvod && puvod !== new URL(request.url).origin) {
+  if (jeCiziPuvod(request)) {
     return odpoved(403, { ok: false, chyba: "Požadavek z cizí stránky." });
   }
 

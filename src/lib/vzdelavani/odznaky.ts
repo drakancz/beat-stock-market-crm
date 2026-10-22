@@ -1,4 +1,5 @@
 import type { BadgeKind } from "@/generated/prisma/enums";
+import { zapisNavstevu } from "@/lib/nechodi";
 import { db } from "@/lib/db";
 
 /**
@@ -14,14 +15,50 @@ import { db } from "@/lib/db";
  * nevyhazují, do logu jde jen druh chyby.
  */
 
-export const POPIS_ODZNAKU: Record<BadgeKind, { nazev: string; popis: string }> = {
-  PRVNI_LEKCE: { nazev: "První krok", popis: "Dokončili jste první lekci." },
-  PULKA_KURZU: { nazev: "V půlce", popis: "Máte hotovou polovinu kurzu." },
-  KURZ_DOKONCEN: { nazev: "Kurz dokončen", popis: "Prošli jste všechny lekce kurzu." },
-  AKTIVNI_4_TYDNY: { nazev: "Vytrvalost", popis: "Čtyři týdny po sobě v klientské části." },
-  PRVNI_WEBINAR: { nazev: "Na živo", popis: "Zúčastnili jste se prvního webináře." },
-  PET_WEBINARU: { nazev: "Pravidelný host", popis: "Zúčastnili jste se pěti webinářů." },
-};
+/** `jakZiskat` je věta u nezískané (šedé) medaile v klientské části. */
+export const POPIS_ODZNAKU: Record<BadgeKind, { nazev: string; popis: string; jakZiskat: string }> =
+  {
+    PRVNI_LEKCE: {
+      nazev: "První krok",
+      popis: "Dokončili jste první lekci.",
+      jakZiskat: "Dokončete první lekci kurzu.",
+    },
+    PULKA_KURZU: {
+      nazev: "V půlce",
+      popis: "Máte hotovou polovinu kurzu.",
+      jakZiskat: "Dokončete polovinu lekcí kurzu.",
+    },
+    KURZ_DOKONCEN: {
+      nazev: "Kurz dokončen",
+      popis: "Prošli jste všechny lekce kurzu.",
+      jakZiskat: "Dokončete všechny lekce kurzu.",
+    },
+    AKTIVNI_4_TYDNY: {
+      nazev: "Vytrvalost",
+      popis: "Čtyři týdny po sobě v klientské části.",
+      jakZiskat: "Přijďte do klientské části čtyři týdny po sobě.",
+    },
+    PRVNI_WEBINAR: {
+      nazev: "Na živo",
+      popis: "Zúčastnili jste se prvního webináře.",
+      jakZiskat: "Zúčastněte se webináře.",
+    },
+    PET_WEBINARU: {
+      nazev: "Pravidelný host",
+      popis: "Zúčastnili jste se pěti webinářů.",
+      jakZiskat: "Zúčastněte se pěti webinářů.",
+    },
+  };
+
+/** Pořadí medailí v klientské části: kurzy, aktivita, webináře. */
+export const PORADI_ODZNAKU: BadgeKind[] = [
+  "PRVNI_LEKCE",
+  "PULKA_KURZU",
+  "KURZ_DOKONCEN",
+  "AKTIVNI_4_TYDNY",
+  "PRVNI_WEBINAR",
+  "PET_WEBINARU",
+];
 
 function zalogujChybu(chyba: unknown) {
   console.error(
@@ -93,6 +130,8 @@ export function isoTyden(okamzik: Date): string {
  */
 export async function zaznamenejAktivitu(clientId: string, ted = new Date()): Promise<void> {
   try {
+    // Poslední návštěva kvůli „platí, ale nechodí“ (5B, 15. 10. 2026).
+    await zapisNavstevu(clientId, ted);
     const tento = isoTyden(ted);
     await db.clientActiveWeek.createMany({
       data: [{ clientId, week: tento }],
@@ -109,6 +148,34 @@ export async function zaznamenejAktivitu(clientId: string, ted = new Date()): Pr
   } catch (chyba) {
     zalogujChybu(chyba);
   }
+}
+
+/**
+ * Aktivní týdny pro Přehled klienta (krok 3, varianta B, 10. 10. 2026):
+ * poslední čtyři týdny (nejstarší první) a kolik týdnů po sobě až do
+ * dneška klient přišel (nejvýš 12). **Tento týden se počítá vždy** —
+ * klient je právě tady a rám ho zapisuje souběžně se stránkou.
+ */
+export async function nactiAktivniTydny(clientId: string, ted = new Date()) {
+  const zpet = Array.from({ length: 12 }, (_, tydnu) =>
+    isoTyden(new Date(ted.getTime() - tydnu * 7 * 86_400_000)),
+  );
+  const zapsane = await db.clientActiveWeek.findMany({
+    where: { clientId, week: { in: zpet } },
+    select: { week: true },
+  });
+  const byl = new Set([zpet[0]!, ...zapsane.map((radek) => radek.week)]);
+
+  let serie = 0;
+  while (serie < zpet.length && byl.has(zpet[serie]!)) serie++;
+
+  return {
+    tydny: zpet
+      .slice(0, 4)
+      .reverse()
+      .map((tyden) => ({ tyden, cislo: Number(tyden.split("-W")[1]), byl: byl.has(tyden) })),
+    serie,
+  };
 }
 
 /* ---------- Čtení ---------- */

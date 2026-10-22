@@ -16,6 +16,8 @@
 /e2e/.stav
 /e2e/vysledky
 /e2e/zprava
+/e2e/vysledky-ukazka
+/e2e/zprava-ukazka
 /test-results
 /playwright-report
 
@@ -59,3 +61,8 @@ next-env.d.ts
 
 # zálohy databáze — jsou v nich osobní údaje klientů a otisky hesel
 /zalohy
+# Připojovací adresy databází dalších projektů (s heslem) — scripts/nova-databaze.sh
+/databaze-projektu
+
+# ukázkové doklady pro účetní (npm run faktury:ukazka)
+/ukazka-faktur

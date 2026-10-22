@@ -8,6 +8,7 @@ import {
 import { UTApi } from "uploadthing/server";
 
 import type { AttachmentStorage } from "@/generated/prisma/enums";
+import { jeUkazka } from "@/lib/ukazka";
 
 /**
  * Kde leží přílohy (4. 10. 2026).
@@ -71,6 +72,9 @@ function jeUploadThingNastaveny(): boolean {
 
 /** Kam půjdou nově nahrané soubory. `null` = nahrávání není nastavené. */
 export function kamNahravat(): AttachmentStorage | null {
+  // Ukázka nic nenahrává (src/lib/ukazka.ts) — UploadThing je veřejně v USA
+  // a cizí návštěvník by tam mohl uložit cokoli.
+  if (jeUkazka()) return null;
   if (nastaveniS3()) return "S3";
   if (jeUploadThingNastaveny()) return "UPLOADTHING";
   return null;

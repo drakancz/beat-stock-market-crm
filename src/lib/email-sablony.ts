@@ -287,7 +287,7 @@ export function pozvanka(vstup: { osloveni: string; odkaz: string; firma: FirmaV
       nahled: "Máš tu připravený účet. Zbývá nastavit heslo — zabere to minutu.",
       nadpis: "Vítej v týmu",
       odstavce: [
-        `Ahoj ${osloveni}, máš připravený účet do interního systému ${ZNACKA}. Je to místo, kde spolu vedeme klienty: hovory, úkoly, portfolia u brokerů i to, kdo co koupil.`,
+        `Ahoj ${osloveni}, máš připravený účet do interního systému ${ZNACKA}. Je to místo, kde spolu vedeme klienty: objednávky, úkoly, poznámky i to, kdo co koupil.`,
         "Zbývá jediný krok — nastavit si heslo. Zvolíš si ho jen ty a nikdo jiný v systému ho neuvidí, ani administrátor. Jakmile ho zadáš, rovnou tě to přihlásí a jsi uvnitř.",
       ],
       tlacitko: { popisek: "Nastavit heslo a vstoupit", odkaz: vstup.odkaz },
@@ -337,7 +337,7 @@ export function uvitani(vstup: { osloveni: string; firma: FirmaVEmailu }): Sablo
       odstavce: [
         `Ahoj ${osloveni}, heslo je nastavené a účet připravený k práci.`,
         "Jako první krok si v Mém účtu zapni dvoufázové ověření. Systém drží data klientů, takže samotné heslo je málo — druhý krok přes aplikaci v telefonu zabere minutu.",
-        "Co v systému najdeš: Dnešek s úkoly a hovory na dnešní den, karty klientů s celou historií, portfolia u jednotlivých brokerů a přehled produktů.",
+        "Co v systému najdeš: Dashboard s úkoly na dnešní den, karty klientů s celou historií, objednávky a přehled produktů.",
       ],
       tlacitko: { popisek: "Přejít do CRM", odkaz: zakladniAdresa() },
       patka: "Kdyby cokoli nefungovalo, ozvi se administrátorovi systému.",

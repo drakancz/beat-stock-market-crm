@@ -272,7 +272,7 @@ test.describe("duplicity očima uživatele", () => {
 test.describe("duplicity na telefonu", () => {
   test.use({ storageState: stavPrihlaseni("admin") });
 
-  test("přehled i okno sloučení nepřečnívají", async ({ page }) => {
+  test("přehled i okno sloučení nepřečnívají", { tag: "@telefon" }, async ({ page }) => {
     test.skip(!jeMobil(page), "Týká se jen telefonu.");
 
     const telefon = nahodnyTelefon();

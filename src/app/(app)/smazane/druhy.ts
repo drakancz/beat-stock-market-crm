@@ -9,9 +9,9 @@
 export const DRUHY = [
   "klient",
   "objednavka",
-  "hovor",
-  "portfolio",
   "produkt",
+  "slevovy-kod",
+  "doporucitel",
   "broker",
   "uzivatel",
 ] as const;

@@ -10,7 +10,7 @@ import {
 } from "./pomocne";
 
 /**
- * Klienti a hovory: založení, úprava, smazání.
+ * Klienti: založení, úprava, smazání.
  *
  * Objednávky tu nejsou — od 22. 9. 2026 je v CRM nikdo nezakládá, chodí
  * z Landing Page. Mají vlastní soubory `objednavky.spec.ts`
@@ -136,54 +136,6 @@ test.describe("klient", () => {
 });
 
 /**
- * Zápis hovoru. Od 23. 9. 2026 (Jakub) se hovor nezapisuje na kartě
- * klienta — tlačítko Zapsat hovor i záložka Hovory odtud zmizely.
- * Zapisuje se v sekci Hovory, kde se klient vybírá v okně.
- */
-test.describe("hovor", () => {
-  test.use({ storageState: stavPrihlaseni("uzivatel") });
-
-  test("hovor jde zapsat, opravit poznámku a smazat v sekci Hovory", async ({ page }) => {
-    const jmeno = `Test Hovor ${pripona()}`;
-    await zalozKlienta(page, jmeno);
-    const poznamka = `Domluvena schůzka ${pripona()}`;
-    const upravena = `${poznamka} — přesunuto`;
-
-    await otevriAzUvidis(page, "/hovory", page.getByRole("button", { name: "Zapsat hovor" }));
-    await page.getByRole("button", { name: "Zapsat hovor" }).click();
-    const dialog = page.getByRole("dialog", { name: "Zapsat hovor" });
-    await dialog.getByRole("combobox", { name: "Klient" }).click();
-    await page.getByRole("option", { name: jmeno }).click();
-    await dialog.getByLabel("Délka v minutách").fill("12");
-    await dialog.getByLabel("Poznámka").fill(poznamka);
-    await dialog.getByRole("button", { name: "Zapsat", exact: true }).click();
-    await cekejNaUspech(page, /Hovor s klientem .* je zapsaný\./);
-
-    // Hledání v Hovorech prohledává i poznámku — ukáže jen tenhle hovor.
-    await otevriAzUvidis(
-      page,
-      `/hovory?hledat=${encodeURIComponent(poznamka)}`,
-      page.getByText(poznamka),
-    );
-    await expect(page.getByText("12 min").first()).toBeVisible();
-
-    // V sekci Hovory se poznámka upravuje přímo v řádku, ne oknem.
-    await page.getByRole("button", { name: "Upravit poznámku" }).first().click();
-    await page.getByLabel("Poznámka k hovoru").fill(upravena);
-    await page.getByRole("button", { name: "Uložit", exact: true }).click();
-    await cekejNaUspech(page, "Poznámka je uložená.");
-    await expect(page.getByText(upravena)).toBeVisible();
-
-    await page.getByRole("button", { name: "Smazat hovor" }).first().click();
-    const potvrzeni = page.getByRole("dialog", { name: "Smazat hovor" });
-    await expect(potvrzeni).toContainText("nelze vzít zpět");
-    await potvrzeni.getByRole("button", { name: "Smazat", exact: true }).click();
-    await cekejNaUspech(page, "Hovor je smazaný.");
-    await expect(page.getByText(upravena)).toHaveCount(0);
-  });
-});
-
-/**
  * Seznam klientů po úpravě 23. 9. 2026 (Jakub).
  *
  * Sloupce Stav, Portfolia a Poslední kontakt zanikly, místo nich Počet
@@ -248,14 +200,19 @@ test.describe("seznam klientů", () => {
     const radek = tabulka.getByRole("row", { name: new RegExp(prijmeni) });
     const bunky = radek.getByRole("cell");
     // Za nimi je od 24. 9. 2026 sloupec Platnost do (kurz nekončí → „—")
-    // a od 23. 9. 2026 Přístup do programu.
-    await expect(bunky.nth(-4)).toHaveText("2");
-    await expect(bunky.nth(-3)).toHaveText(/^\d{1,2}\. \d{1,2}\. \d{4}$/);
+    // a od 23. 9. 2026 Přístup do programu. Od 18. 10. 2026 je před
+    // Platností sloupec Body — jen na širokém displeji (xl, 1280 px).
+    const sBody = (page.viewportSize()?.width ?? 0) >= 1280;
+    const posun = sBody ? 1 : 0;
+    await expect(bunky.nth(-4 - posun)).toHaveText("2");
+    await expect(bunky.nth(-3 - posun)).toHaveText(/^\d{1,2}\. \d{1,2}\. \d{4}$/);
+    if (sBody) await expect(bunky.nth(-3)).toHaveText("0");
     await expect(bunky.nth(-2)).toHaveText("—");
     await expect(bunky.nth(-1)).toHaveText("Nepovolen");
 
     // Pod jménem je e-mail i telefon, každý na svém řádku (23. 9. 2026).
-    const klient = bunky.first();
+    // Před jménem je od 11. 10. 2026 zaškrtávátko pro hromadné akce.
+    const klient = bunky.nth(1);
     await expect(klient).toContainText(email);
     await expect(klient).toContainText(zobrazeny);
 

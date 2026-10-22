@@ -1,11 +1,13 @@
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 
-import { expect, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { Pool } from "pg";
 
 import type { Role } from "../src/generated/prisma/enums";
 import { zahesluj } from "../src/lib/hesla";
+
+import { STITEK_TELEFON, beziNaTelefonu } from "./telefon";
 
 /**
  * Pomůcky sdílené všemi testy.
@@ -154,6 +156,16 @@ export async function cekejNaUspech(page: Page, text: string | RegExp) {
 }
 
 /**
+ * Počká, až upozornění v rohu zmizí. Na telefonu leží přes spodek
+ * obrazovky a zakryje tlačítko, které test chce stisknout znovu.
+ * Myš se odsune, protože upozornění pod ní nezmizí (sonner ho pozdrží).
+ */
+export async function cekejNaZmizeniUpozorneni(page: Page) {
+  await page.mouse.move(0, 0);
+  await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, { timeout: 15_000 });
+}
+
+/**
  * Vybere hodnotu v rozbalovacím seznamu (shadcn `Select`) podle popisku.
  */
 export async function vyber(page: Page, popisek: string, volba: string | RegExp) {
@@ -184,8 +196,20 @@ export async function otevriAzUvidis(page: Page, adresa: string, prvek: Locator)
   }).toPass({ timeout: 90_000 });
 }
 
-/** Stránka se nedá posouvat do strany — nic nepřečnívá z okna. */
+/**
+ * Stránka se nedá posouvat do strany — nic nepřečnívá z okna.
+ *
+ * Smysl má jen na telefonu, proto test bez štítku `@telefon` (a mimo
+ * soubory z `e2e/telefon.ts`) spadne: na telefonech by se vůbec nepustil
+ * a kontrola by tiše běžela jen na širokém desktopu.
+ */
 export async function bezVodorovnehoPosuvu(page: Page) {
+  const info = test.info();
+  if (!beziNaTelefonu(info.file, info.tags)) {
+    throw new Error(
+      `Test kontroluje rozložení na telefonu, ale nemá štítek ${STITEK_TELEFON} — přidej { tag: "${STITEK_TELEFON}" } (e2e/telefon.ts).`,
+    );
+  }
   const prectiva = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );

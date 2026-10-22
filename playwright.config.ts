@@ -1,5 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
+import { NA_TELEFONU } from "./e2e/telefon";
+
 /**
  * Automatické testy v prohlížeči (Playwright).
  *
@@ -72,14 +74,25 @@ export default defineConfig({
     // Založí zkušební účty pro všechny role a přihlásí je.
     { name: "priprava", testMatch: /priprava\.setup\.ts/ },
 
-    // Desktop, Android a iPhone (Jakub, 17. 9. 2026).
+    // Desktop, Android a iPhone (Jakub, 17. 9. 2026). Telefony od 20. 10.
+    // 2026 jen testy se štítkem @telefon a vybrané soubory (e2e/telefon.ts).
     {
       name: "desktop",
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
       dependencies: ["priprava"],
     },
-    { name: "android", use: { ...devices["Pixel 7"] }, dependencies: ["priprava"] },
-    { name: "iphone", use: { ...devices["iPhone 15"] }, dependencies: ["priprava"] },
+    {
+      name: "android",
+      use: { ...devices["Pixel 7"] },
+      grep: NA_TELEFONU,
+      dependencies: ["priprava"],
+    },
+    {
+      name: "iphone",
+      use: { ...devices["iPhone 15"] },
+      grep: NA_TELEFONU,
+      dependencies: ["priprava"],
+    },
   ],
 
   webServer: {
@@ -87,7 +100,8 @@ export default defineConfig({
     url: `http://localhost:${PORT}/prihlaseni`,
     reuseExistingServer: false,
     // Vymazání databáze, migrace, ukázková data a první překlad.
-    timeout: 600_000,
+    // Na GitHubu navíc produkční sestavení (E2E_PRODUKCE, e2e/server.sh).
+    timeout: process.env.E2E_PRODUKCE === "1" ? 1_500_000 : 600_000,
     stdout: "ignore",
     stderr: "pipe",
   },

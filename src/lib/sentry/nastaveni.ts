@@ -1,4 +1,9 @@
-import type { ErrorEvent, Breadcrumb } from "@sentry/nextjs";
+import type { Breadcrumb, ErrorEvent, init } from "@sentry/nextjs";
+
+// `@sentry/nextjs` tyhle typy samostatně nevyváží.
+type Options = NonNullable<Parameters<typeof init>[0]>;
+type DataCollection = NonNullable<Options["dataCollection"]>;
+type StreamedSpanJSON = Parameters<NonNullable<Options["beforeSendSpan"]>>[0];
 
 import { bezOsobnichUdaju } from "@/lib/anonymizace";
 
@@ -9,9 +14,12 @@ import { bezOsobnichUdaju } from "@/lib/anonymizace";
  * jejích serverech. Systém drží osobní údaje stovek lidí, takže platí
  * přísná pravidla (security_warnings.md, pravidlo 8):
  *
- * 1. **Neposílá se nic, podle čeho jde poznat klient.** `sendDefaultPii`
- *    je vypnuté (žádné IP adresy, hlavičky ani těla požadavků) a navíc
- *    každá hláška projde `bezOsobnichUdaju()`.
+ * 1. **Neposílá se nic, podle čeho jde poznat klient.** Sběr dat
+ *    (`dataCollection`) je celý vypnutý — žádné IP adresy, cookies,
+ *    hlavičky, těla požadavků, parametry adres, hodnoty z dotazů do
+ *    databáze ani proměnné z výpisu chyby — a navíc každá hláška
+ *    i měření projde `bezOsobnichUdaju()`. **Pozor:** od Sentry 11 sbírá
+ *    SDK bez tohohle nastavení všechno (5. 10. 2026, přechod z 10 na 11).
  * 2. **O přihlášeném jde ven jen vnitřní ID a role** (Jakub, 17. 9. 2026),
  *    nikdy jméno ani e-mail — na serveru to nastavuje `getViewer()`
  *    (`src/lib/session.ts`), v prohlížeči `SentryUzivatel`
@@ -53,7 +61,7 @@ export function ocistiUdalost(udalost: ErrorEvent): ErrorEvent | null {
 
   if (udalost.request?.url) udalost.request.url = bezParametru(udalost.request.url);
 
-  // Jistota pro případ, že by `sendDefaultPii` někdo zapnul: tyhle části
+  // Jistota pro případ, že by sběr dat někdo zapnul: tyhle části
   // nesou hlavičky, cookies a těla požadavků.
   delete udalost.request?.cookies;
   delete udalost.request?.headers;
@@ -102,17 +110,69 @@ export function bezParametru(adresa: string): string {
   return konec === -1 ? adresa : adresa.slice(0, konec);
 }
 
+/**
+ * Měření výkonu (od Sentry 11 chodí po jednotlivých úsecích, ne jako
+ * celé „transakce“, a `beforeSend` jimi neprochází). Z názvu i z údajů
+ * úseku se zahodí parametry adres a e-maily s telefony.
+ */
+export function ocistiUsek(usek: StreamedSpanJSON): StreamedSpanJSON {
+  usek.name = bezOsobnichUdaju(bezParametru(usek.name));
+
+  const udaje = usek.attributes as Record<string, unknown>;
+  for (const [klic, hodnota] of Object.entries(udaje)) {
+    // Samotná část za otazníkem (`url.query`, `http.query`) nepatří ven vůbec.
+    if (/query$/i.test(klic) && !/^db\./i.test(klic)) {
+      delete udaje[klic];
+      continue;
+    }
+    const ocisti = (text: string) =>
+      bezOsobnichUdaju(/url|target|route/i.test(klic) ? bezParametru(text) : text);
+
+    if (typeof hodnota === "string") {
+      udaje[klic] = ocisti(hodnota);
+    } else if (
+      hodnota &&
+      typeof hodnota === "object" &&
+      typeof (hodnota as { value?: unknown }).value === "string"
+    ) {
+      udaje[klic] = { ...hodnota, value: ocisti((hodnota as { value: string }).value) };
+    }
+  }
+
+  return usek;
+}
+
+/**
+ * Co SDK samo sbírá. Všechno vypnuté (Jakub, 17. 9. 2026 — dříve
+ * `sendDefaultPii: false`). Kdo přihlášený je, doplňujeme ručně jen ID
+ * a rolí; `userInfo: false` vypíná jen automatické doplňování (IP adresa).
+ */
+const BEZ_SBERU_DAT = {
+  userInfo: false,
+  cookies: false,
+  httpHeaders: false,
+  httpBodies: [],
+  urlQueryParams: false,
+  graphQL: { document: false, variables: false },
+  genAI: { inputs: false, outputs: false },
+  databaseQueryData: false,
+  queues: false,
+  stackFrameVariables: false,
+} satisfies DataCollection;
+
 /** Nastavení společné serveru, prohlížeči i okrajovým funkcím. */
 export function spolecneNastaveni() {
   return {
     dsn: dsn(),
     enabled: jeZapnute(),
-    // Nikdy neposílat IP adresy, hlavičky, cookies ani těla požadavků.
-    sendDefaultPii: false,
+    // Nikdy neposílat IP adresy, hlavičky, cookies, těla požadavků ani
+    // hodnoty z dotazů — od Sentry 11 se to musí říct výslovně.
+    dataCollection: BEZ_SBERU_DAT,
     tracesSampleRate: VZOREK_MERENI,
     // Ve vývoji by hlášení stejně neodešlo; ať Sentry nepíše do konzole.
     debug: false,
     beforeSend: ocistiUdalost,
+    beforeSendSpan: ocistiUsek,
     beforeBreadcrumb: ocistiDrobek,
   };
 }

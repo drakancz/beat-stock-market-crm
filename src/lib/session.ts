@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { dvoufazovePovinne, nactiNastaveni } from "@/lib/nastaveni";
 import { osloveniUzivatele } from "@/lib/osloveni";
+import { jeUkazkovyTym } from "@/lib/ukazka";
 import type { Role } from "@/generated/prisma/enums";
 
 /**
@@ -152,5 +153,16 @@ export async function requireViewer(moznosti?: { bezDvoufazoveho?: boolean }): P
 export async function requireAdmin(): Promise<Viewer> {
   const viewer = await requireViewer();
   if (viewer.role !== "ADMINISTRATOR") notFound();
+  return viewer;
+}
+
+/**
+ * Správa uživatelů (účty týmu, jejich role, přístup, Smazaní kolegové):
+ * administrátor kromě ukázkového účtu (Jakub, 22. 10. 2026). Heslo
+ * ukázkového účtu je veřejné — návštěvník nesmí sahat na účty týmu.
+ */
+export async function requireSpravceUzivatelu(): Promise<Viewer> {
+  const viewer = await requireAdmin();
+  if (jeUkazkovyTym(viewer.email)) notFound();
   return viewer;
 }

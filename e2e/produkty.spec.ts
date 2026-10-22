@@ -290,7 +290,7 @@ test.describe("produkty očima uživatele", () => {
 test.describe("produkty na telefonu", () => {
   test.use({ storageState: stavPrihlaseni("admin") });
 
-  test("formulář s odkazem nepřečnívá z okna", async ({ page }) => {
+  test("formulář s odkazem nepřečnívá z okna", { tag: "@telefon" }, async ({ page }) => {
     test.skip(!jeMobil(page), "Týká se jen telefonu.");
 
     await page.goto("/produkty");

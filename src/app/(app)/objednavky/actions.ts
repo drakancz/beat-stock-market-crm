@@ -1,15 +1,17 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { after } from "next/server";
 import { z } from "zod";
 
 import { zapisDoAuditu } from "@/lib/audit";
 import { db } from "@/lib/db";
-import { upozorniNaZaplaceni } from "@/lib/klient/oznameni";
-import { opisDelkuPlatnosti, prepocitejPlatnost } from "@/lib/platnost";
+import { prepocitejOdmenu } from "@/lib/doporuceni";
+import { prepocitejPlatnost } from "@/lib/platnost";
 import { viditelneObjednavky } from "@/lib/queries";
 import { requireAdmin, requireViewer } from "@/lib/session";
+import { fakturyZapnute, vystavDobropis, vystavFakturu } from "@/lib/faktury/faktury";
+import { vratPenize } from "@/lib/platby/platby";
+import { zmenStavPlatby } from "@/lib/zaplaceni";
 
 /**
  * Co jde u objednávky změnit.
@@ -50,18 +52,6 @@ function obnovStranky(clientId: string) {
   revalidatePath("/dashboard");
 }
 
-/**
- * Datum platby se drží u stavu.
- *
- * Vyplní se při přepnutí na Zaplaceno a při návratu zpět se maže —
- * stejný princip, jako dřív u data uzavření případu. Podle něj se
- * počítají tržby v Cílech, takže se nesmí rozejít se stavem.
- */
-function datumPlatby(stav: z.infer<typeof STAVY>, puvodni: Date | null): Date | null {
-  if (stav !== "ZAPLACENO") return null;
-  return puvodni ?? new Date();
-}
-
 /* ---------- Stav objednávky ---------- */
 
 /**
@@ -87,38 +77,20 @@ export async function zmenStavObjednavky(idRaw: string, stavRaw: string): Promis
     return { ok: true, zprava: "Objednávka už v tomhle stavu je." };
   }
 
-  await db.$transaction(async (tx) => {
-    await tx.order.update({
-      where: { id: objednavka.id },
-      data: { status: stav.data, paidAt: datumPlatby(stav.data, objednavka.paidAt) },
-    });
-
-    // Platnost členství (Jakub, 24. 9. 2026): při zaplacení se délka
-    // produktu opíše do položek, aby ji pozdější změna v ceníku
-    // nepřepsala; při návratu ze Zaplaceno se zahodí. Pak se konec
-    // platnosti klienta spočítá znovu — ve stejné transakci.
-    if (stav.data === "ZAPLACENO" || objednavka.status === "ZAPLACENO") {
-      await opisDelkuPlatnosti(tx, objednavka.id, stav.data === "ZAPLACENO");
-      await prepocitejPlatnost(tx, objednavka.clientId);
-    }
-
-    await zapisDoAuditu(tx, {
-      userId: viewer.id,
-      entity: "orders",
-      entityId: objednavka.id,
-      action: "objednavka.stav-zmenen",
-      before: { stav: objednavka.status },
-      after: { stav: stav.data },
-    });
-  });
-
-  // Klient dostane upozornění, že je zaplaceno (3A, 4. 10. 2026) — až
-  // po odpovědi, výpadek doručovací služby nesmí zdržet administrátora.
-  if (stav.data === "ZAPLACENO") after(() => upozorniNaZaplaceni(objednavka.id));
+  // Zaplacení i návrat ze Zaplaceno jdou přes jedno místo (19. 10. 2026),
+  // stejné jako u platební brány — `src/lib/zaplaceni.ts`.
+  const zmena = await zmenStavPlatby(objednavka.id, stav.data, { userId: viewer.id });
+  const odmena = zmena?.odmena ?? null;
 
   obnovStranky(objednavka.clientId);
 
-  return { ok: true, zprava: `Stav objednávky je změněný: ${objednavka.number}.` };
+  return {
+    ok: true,
+    zprava:
+      odmena === "vyplacena-zustava"
+        ? `Stav objednávky je změněný: ${objednavka.number}. Odměna doporučiteli z ní je už vyplacená — v přehledu zůstává.`
+        : `Stav objednávky je změněný: ${objednavka.number}.`,
+  };
 }
 
 /*
@@ -216,6 +188,8 @@ export async function dejObjednavkuDoKose(idRaw: string): Promise<Vysledek> {
 
     // Smazaná zaplacená objednávka se do platnosti členství nepočítá.
     if (objednavka.status === "ZAPLACENO") await prepocitejPlatnost(tx, objednavka.clientId);
+    // Smazaná objednávka nevyplacenou odměnu doporučiteli nepotřebuje.
+    await prepocitejOdmenu(tx, objednavka.id, viewer.id);
 
     await zapisDoAuditu(tx, {
       userId: viewer.id,
@@ -235,4 +209,86 @@ export async function dejObjednavkuDoKose(idRaw: string): Promise<Vysledek> {
   revalidatePath("/smazane");
 
   return { ok: true, zprava: `Smazáno: objednávka ${objednavka.number}.` };
+}
+
+/* ---------- Vrácení platby přes bránu ---------- */
+
+/**
+ * Vrácení peněz za platbu přes GoPay (19. 10. 2026). **Jen administrátor**
+ * — `requireAdmin()` na prvním řádku. Objednávka se vrátí do stavu
+ * Nezaplaceno (s tím i platnost a odměna doporučiteli, jako při ručním
+ * přepnutí).
+ */
+export async function vratitPenize(paymentIdRaw: string): Promise<Vysledek> {
+  const admin = await requireAdmin();
+  const id = ID.safeParse(paymentIdRaw);
+  if (!id.success) return { ok: false, chyba: "Neplatný požadavek." };
+
+  const platba = await db.payment.findFirst({
+    where: { id: id.data, order: viditelneObjednavky(admin) },
+    select: { id: true, order: { select: { clientId: true } } },
+  });
+  if (!platba) return { ok: false, chyba: "Taková platba neexistuje." };
+
+  const vysledek = await vratPenize(platba.id, admin.id);
+  if (!vysledek.ok) return vysledek;
+  obnovStranky(platba.order.clientId);
+  return { ok: true, zprava: `Peníze jsou vrácené: objednávka ${vysledek.cislo}.` };
+}
+
+/* ---------- Faktury ---------- */
+
+/**
+ * Ruční vystavení faktury u zaplacené objednávky, která ji nemá — typicky
+ * zaplacená před spuštěním faktur (Jakub, 19. 10. 2026). **Jen
+ * administrátor.** Nové platby fakturu dostávají samy.
+ */
+export async function vystavitFakturu(orderIdRaw: string): Promise<Vysledek> {
+  const admin = await requireAdmin();
+  const id = ID.safeParse(orderIdRaw);
+  if (!id.success) return { ok: false, chyba: "Neplatný požadavek." };
+
+  const objednavka = await db.order.findFirst({
+    where: { AND: [{ id: id.data }, viditelneObjednavky(admin)] },
+    select: { id: true, clientId: true, status: true },
+  });
+  if (!objednavka) return { ok: false, chyba: "Taková objednávka neexistuje." };
+  if (objednavka.status !== "ZAPLACENO") {
+    return { ok: false, chyba: "Fakturu jde vystavit jen k zaplacené objednávce." };
+  }
+  const zapnute = await fakturyZapnute();
+  if (!zapnute.ok) {
+    return {
+      ok: false,
+      chyba: `Faktury jsou vypnuté — v Nastavení → Firma chybí: ${zapnute.chybi.join(", ")}.`,
+    };
+  }
+
+  const faktura = await vystavFakturu(objednavka.id, admin.id);
+  if (!faktura) return { ok: false, chyba: "Fakturu se nepodařilo vystavit." };
+  obnovStranky(objednavka.clientId);
+  return {
+    ok: true,
+    zprava: faktura.nova
+      ? `Faktura je vystavená: ${faktura.number}.`
+      : `Faktura už existuje: ${faktura.number}.`,
+  };
+}
+
+/** Dobropis k faktuře — **jen administrátor** (Jakub, 19. 10. 2026). */
+export async function vystavitDobropis(fakturaIdRaw: string): Promise<Vysledek> {
+  const admin = await requireAdmin();
+  const id = ID.safeParse(fakturaIdRaw);
+  if (!id.success) return { ok: false, chyba: "Neplatný požadavek." };
+
+  const faktura = await db.invoice.findFirst({
+    where: { id: id.data, kind: "FAKTURA", order: viditelneObjednavky(admin) },
+    select: { id: true, order: { select: { clientId: true } } },
+  });
+  if (!faktura) return { ok: false, chyba: "Taková faktura neexistuje." };
+
+  const vysledek = await vystavDobropis(faktura.id, admin.id);
+  if (!vysledek.ok) return vysledek;
+  obnovStranky(faktura.order.clientId);
+  return { ok: true, zprava: `Dobropis je vystavený: ${vysledek.number}.` };
 }

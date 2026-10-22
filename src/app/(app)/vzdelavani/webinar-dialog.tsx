@@ -38,6 +38,8 @@ export interface WebinarKUprave {
   joinUrl: string;
   audience: "VSICHNI" | "CLENOVE" | "KURZ";
   courseId: string;
+  /** Posílat klientům připomínku den a hodinu předem (5C, 11. 10. 2026). */
+  remindersEnabled: boolean;
 }
 
 const PUBLIKUM = [
@@ -210,6 +212,22 @@ export function WebinarDialog({
                 </Select>
               </div>
             )}
+
+            {/* Připomínka klientům (Fáze 5C, Jakub 11. 10. 2026). */}
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                name="pripominka"
+                defaultChecked={webinar?.remindersEnabled ?? true}
+                className="accent-primary mt-0.5 size-4 shrink-0"
+              />
+              <span>
+                Poslat klientům připomínku den předem a hodinu předem
+                <span className="text-muted-foreground block text-xs">
+                  Oznámením na telefon, jinak e-mailem. Změna začátku pošle připomínky znovu.
+                </span>
+              </span>
+            </label>
           </form>
 
           <DialogFooter>
