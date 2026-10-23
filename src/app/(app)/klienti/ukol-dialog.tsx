@@ -25,7 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PoleVyberu } from "@/components/pole-vyberu";
-import { jakoDen } from "@/lib/obdobi";
+import { jakoDen } from "@/lib/den";
 
 import { upravUkol, zalozUkol } from "./ukoly-actions";
 

@@ -134,13 +134,15 @@ export default async function KoupitPage({ searchParams }: PageProps<"/ucet/koup
                       data-testid="produkt-k-nakupu"
                       className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3 first:pt-0 last:pb-0"
                     >
-                      <div className="min-w-0 flex-1">
+                      {/* Na telefonu název přes celý řádek, cena a tlačítko pod ním —
+                          vedle nich by se název lámal po slovech. */}
+                      <div className="min-w-0 basis-full sm:flex-1">
                         <p className="font-medium break-words">{produkt.name}</p>
                         <p className="text-muted-foreground text-xs">
                           {popisProduktu(produkt.kind, produkt.validityMonths)}
                         </p>
                       </div>
-                      <span className="tabular font-medium whitespace-nowrap">
+                      <span className="tabular mr-auto font-medium whitespace-nowrap sm:mr-0">
                         {formatMoney(cena, produkt.currency)}
                       </span>
                       <KoupitProdukt

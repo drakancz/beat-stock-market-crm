@@ -35,7 +35,7 @@ import { nactiDashboard, nactiKlientyProVyber, nactiMojeUkoly } from "@/lib/quer
 import { requireViewer } from "@/lib/session";
 import { nactiTrychtyr, podil } from "@/lib/trychtyr";
 
-import { GrafHodnoty, GrafKategorii } from "./grafy";
+import { GrafHodnoty, GrafKategorii } from "./grafy-odlozene";
 import { nactiMozneMajitele } from "../klienti/ukoly-actions";
 import { MujDen } from "./muj-den";
 import { Pipeline } from "./pipeline";

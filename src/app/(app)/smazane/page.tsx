@@ -5,6 +5,7 @@ import { cenaPolozkyBezDph } from "@/lib/dph";
 import { requireAdmin } from "@/lib/session";
 import { formatMoney } from "@/lib/format";
 import { pocet } from "@/lib/mnozne";
+import { jeUkazkovyTym } from "@/lib/ukazka";
 
 import { SeznamSmazanych, type RadekKose } from "./seznam-smazanych";
 
@@ -24,7 +25,9 @@ export const dynamic = "force-dynamic";
  * neexistuje — ani když zná adresu.
  */
 export default async function SmazanePage() {
-  await requireAdmin();
+  const admin = await requireAdmin();
+  // Ukázkový účet e-maily kolegů neuvidí (src/lib/ukazka.ts) — ani odložených.
+  const ukazka = jeUkazkovyTym(admin.email);
 
   const [klienti, objednavky, produkty, brokeri, uzivatele, kody, doporucitele] = await Promise.all(
     [
@@ -236,7 +239,7 @@ export default async function SmazanePage() {
         druh: "uzivatel" as const,
         id: uzivatel.id,
         nazev: uzivatel.name,
-        popis: uzivatel.email,
+        popis: ukazka ? "Účet týmu" : uzivatel.email,
         smazano: uzivatel.deletedAt!.toISOString(),
         // Aktivita se počítá taky: kdo se přihlásil a díval se na klienty,
         // po sobě stopu nechal (Nastavení → Aktivita).

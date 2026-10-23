@@ -14,6 +14,8 @@
  * dokumentaci GoPay** (doc.gopay.com) — napodobenina kopíruje to, co tu je.
  */
 
+import { jeUkazka } from "@/lib/ukazka";
+
 const VYCHOZI_URL = "https://gw.sandbox.gopay.com/api";
 const ODPOVED_DO_MS = 15_000;
 
@@ -26,6 +28,10 @@ interface Nastaveni {
 
 /** Nastavení brány, nebo `null`, když není zapnutá. */
 export function nastaveniGoPay(): Nastaveni | null {
+  // Ukázka nepošle ven nic (src/lib/ukazka.ts) — brána je jako nenastavená.
+  // Jinak by návštěvník s veřejným heslem administrátora mohl zakládat
+  // a vracet skutečné platby, kdyby na serveru byly klíče (23. 10. 2026).
+  if (jeUkazka()) return null;
   const goid = process.env.GOPAY_GOID?.trim();
   const clientId = process.env.GOPAY_CLIENT_ID?.trim();
   const clientSecret = process.env.GOPAY_CLIENT_SECRET?.trim();

@@ -1,5 +1,6 @@
 # Závislosti se instalují v kontejneru (linuxové binárky, ne windowsové).
-node_modules
+# `**/` kvůli migrace/node_modules — samotné `node_modules` platí jen v kořeni.
+**/node_modules
 .next
 out
 build
@@ -21,6 +22,10 @@ databaze-projektu
 e2e/.stav
 e2e/vysledky
 e2e/zprava
+e2e/vysledky-ukazka
+e2e/zprava-ukazka
+ukazka-faktur
+test-results
 .claude
 
 # Editory a systémové smetí

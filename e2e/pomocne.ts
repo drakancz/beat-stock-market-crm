@@ -29,7 +29,10 @@ export async function dotaz<T extends Record<string, unknown>>(
   parametry: unknown[] = [],
 ): Promise<T[]> {
   const adresa = process.env.DATABASE_URL ?? "";
-  if (!/\/crm_test(\?|$)/.test(adresa)) throw new Error("Testy smí sahat jen na crm_test.");
+  // `crm_test_ukazka` je databáze testů ukázky (playwright.ukazka.config.ts).
+  if (!/\/crm_test(_ukazka)?(\?|$)/.test(adresa)) {
+    throw new Error("Testy smí sahat jen na crm_test a crm_test_ukazka.");
+  }
 
   spojeni ??= new Pool({ connectionString: adresa, max: 2 });
   const vysledek = await spojeni.query<T>(sql, parametry);

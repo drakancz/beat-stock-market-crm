@@ -1,9 +1,13 @@
+import { randomBytes } from "node:crypto";
+
 import { db } from "@/lib/db";
+import { prepocitejOdmenu } from "@/lib/doporuceni";
 import { vystavFakturu } from "@/lib/faktury/faktury";
 import { zahesluj } from "@/lib/hesla";
 import { opisDelkuPlatnosti, prepocitejPlatnost } from "@/lib/platnost";
 import { UKAZKOVY_KLIENT, UKAZKOVY_TYM } from "@/lib/ukazka";
 import { UKAZKOVE_CLANKY, UKAZKOVE_KURZY, UKAZKOVE_WEBINARE } from "@/lib/ukazka-obsah";
+import { isoTyden } from "@/lib/vzdelavani/odznaky";
 import { naplnZakladniData } from "@/lib/ukazka-zaklad";
 
 /**
@@ -11,7 +15,7 @@ import { naplnZakladniData } from "@/lib/ukazka-zaklad";
  *
  * Na základní data (`ukazka-zaklad.ts`) přidá to, co z CRM dělá
  * přesvědčivou ukázku: zkušební účty, vymyšlenou firmu pro faktury,
- * patnáct klientů s objednávkami za poslední tři měsíce, štítky, poznámky,
+ * klienty s objednávkami (členství i přes rok zpátky), štítky, poznámky,
  * úkoly, konzultace a celé vzdělávání. **Data jsou vymyšlená**
  * (security_warnings.md, pravidlo 8), data se počítají od dneška, aby
  * ukázka nestárla.
@@ -113,7 +117,11 @@ interface NovyKlient {
   stitky?: string[];
   poznamka?: string;
   /** Objednávky: názvy produktů, stav a před kolika dny. */
-  objednavky?: { produkty: string[]; stav: "NOVA" | "NEZAPLACENO" | "ZAPLACENO"; predDny: number }[];
+  objednavky?: {
+    produkty: string[];
+    stav: "NOVA" | "NEZAPLACENO" | "ZAPLACENO";
+    predDny: number;
+  }[];
 }
 
 const KLIENTI: NovyKlient[] = [
@@ -130,6 +138,10 @@ const KLIENTI: NovyKlient[] = [
     objednavky: [
       { produkty: ["Kurz Základy investování"], stav: "ZAPLACENO", predDny: 65 },
       { produkty: ["Členství Klub BSM — rok"], stav: "ZAPLACENO", predDny: 40 },
+      // Dvě konzultace: jedna už má termín, druhou si návštěvník vybere sám
+      // (krok průvodce „Rezervace konzultace“).
+      { produkty: ["Konzultace 1:1 (60 min)"], stav: "ZAPLACENO", predDny: 25 },
+      { produkty: ["Konzultace 1:1 (60 min)"], stav: "ZAPLACENO", predDny: 6 },
       { produkty: ["Kurz Technická analýza"], stav: "NEZAPLACENO", predDny: 2 },
     ],
   },
@@ -144,7 +156,11 @@ const KLIENTI: NovyKlient[] = [
     stitky: ["Klub", "VIP"],
     poznamka: "Chce si projít technickou analýzu před koncem roku.",
     objednavky: [
-      { produkty: ["Členství Klub BSM — rok", "Konzultace 1:1 (60 min)"], stav: "ZAPLACENO", predDny: 85 },
+      {
+        produkty: ["Členství Klub BSM — rok", "Konzultace 1:1 (60 min)"],
+        stav: "ZAPLACENO",
+        predDny: 85,
+      },
       { produkty: ["Kurz Technická analýza"], stav: "ZAPLACENO", predDny: 30 },
     ],
   },
@@ -211,9 +227,13 @@ const KLIENTI: NovyKlient[] = [
     zdroj: "Doporučení od klienta",
     stage: "NEAKTIVNI",
     souhlas: true,
-    predDny: 89,
+    predDny: 360,
     poznamka: "Členství mu brzy končí, zatím neodpověděl.",
-    objednavky: [{ produkty: ["Kurz Technická analýza"], stav: "ZAPLACENO", predDny: 87 }],
+    objednavky: [
+      // Roční členství končí asi za dva týdny — sedí k poznámce i úkolu.
+      { produkty: ["Členství Klub BSM — rok"], stav: "ZAPLACENO", predDny: 353 },
+      { produkty: ["Kurz Technická analýza"], stav: "ZAPLACENO", predDny: 87 },
+    ],
   },
   {
     name: "Barbora Němcová",
@@ -224,7 +244,13 @@ const KLIENTI: NovyKlient[] = [
     souhlas: true,
     predDny: 25,
     stitky: ["Webinář"],
-    objednavky: [{ produkty: ["Kurz Základy investování", "Kurz Technická analýza"], stav: "ZAPLACENO", predDny: 24 }],
+    objednavky: [
+      {
+        produkty: ["Kurz Základy investování", "Kurz Technická analýza"],
+        stav: "ZAPLACENO",
+        predDny: 24,
+      },
+    ],
   },
   {
     name: "Jakub Pokorný",
@@ -258,6 +284,82 @@ const KLIENTI: NovyKlient[] = [
     stage: "NOVY",
     souhlas: false,
     predDny: 3,
+  },
+  // Historie členství, ať čísla Členství na Dashboardu za 30 dní nejsou
+  // nuly (Jakub, 23. 10. 2026). Členství je roční, zaplaceno = předDny − 1:
+  // dva prodloužili, jeden odešel, u jednoho běží lhůta, dva jsou noví.
+  {
+    name: "Radek Svoboda",
+    email: "radek.svoboda@example.test",
+    phone: "+420 721 330 415",
+    zdroj: "Landing Page",
+    stage: "AKTIVNE_OBCHODUJE",
+    souhlas: true,
+    predDny: 395,
+    stitky: ["Klub"],
+    objednavky: [
+      { produkty: ["Členství Klub BSM — rok"], stav: "ZAPLACENO", predDny: 382 },
+      // Prodloužil ještě před koncem.
+      { produkty: ["Členství Klub BSM — rok"], stav: "ZAPLACENO", predDny: 20 },
+    ],
+  },
+  {
+    name: "Alena Kučerová",
+    email: "alena.kucerova@example.test",
+    phone: "+420 736 812 044",
+    zdroj: "Newsletter — SmartEmailing",
+    stage: "AKTIVNE_OBCHODUJE",
+    souhlas: true,
+    predDny: 380,
+    stitky: ["Klub"],
+    objednavky: [
+      { produkty: ["Členství Klub BSM — rok"], stav: "ZAPLACENO", predDny: 372 },
+      // Zaplatila pár dní po konci — ve lhůtě, počítá se jako prodloužení.
+      { produkty: ["Členství Klub BSM — rok"], stav: "ZAPLACENO", predDny: 4 },
+    ],
+  },
+  {
+    name: "Michal Zeman",
+    email: "michal.zeman@example.test",
+    phone: "+420 774 205 381",
+    zdroj: "Webinář — Jak číst akciový trh",
+    stage: "NEAKTIVNI",
+    souhlas: true,
+    predDny: 400,
+    poznamka: "Členství neprodloužil, prý se vrátí po novém roce.",
+    objednavky: [{ produkty: ["Členství Klub BSM — rok"], stav: "ZAPLACENO", predDny: 390 }],
+  },
+  {
+    name: "Hana Marková",
+    email: "hana.markova@example.test",
+    phone: "+420 608 447 129",
+    zdroj: "Landing Page",
+    stage: "MA_UCET",
+    souhlas: true,
+    predDny: 375,
+    objednavky: [{ produkty: ["Členství Klub BSM — rok"], stav: "ZAPLACENO", predDny: 371 }],
+  },
+  {
+    name: "Veronika Šťastná",
+    email: "veronika.stastna@example.test",
+    phone: "+420 725 913 602",
+    zdroj: "Doporučení od klienta",
+    stage: "MA_UCET",
+    souhlas: true,
+    predDny: 14,
+    stitky: ["Klub"],
+    objednavky: [{ produkty: ["Členství Klub BSM — rok"], stav: "ZAPLACENO", predDny: 10 }],
+  },
+  {
+    name: "Lukáš Holub",
+    email: "lukas.holub@example.test",
+    phone: null,
+    zdroj: "Webinář — Jak číst akciový trh",
+    stage: "MA_UCET",
+    souhlas: false,
+    predDny: 25,
+    stitky: ["Klub"],
+    objednavky: [{ produkty: ["Členství Klub BSM — rok"], stav: "ZAPLACENO", predDny: 22 }],
   },
 ];
 
@@ -316,7 +418,12 @@ export async function naplnUkazku() {
     }
     if (k.poznamka) {
       await db.clientNote.create({
-        data: { clientId: klient.id, authorId: zaklad.uzivatele.petra.id, text: k.poznamka, createdAt: den(-k.predDny + 1) },
+        data: {
+          clientId: klient.id,
+          authorId: zaklad.uzivatele.petra.id,
+          text: k.poznamka,
+          createdAt: den(-k.predDny + 1),
+        },
       });
     }
 
@@ -423,12 +530,68 @@ export async function naplnUkazku() {
     lekceKurzu.set(kurz.produkt, ids);
   }
 
-  // Eva má za sebou dvě lekce Základů — ať je vidět postup a odznak.
+  // Eva má za sebou první lekci Základů — ať je vidět postup a odznak.
+  // Další je lekce s kvízem, takže „Pokračovat“ vede rovnou na krok
+  // průvodce „Kurz a kvíz“. Lekce je z posledních 30 dní, jinak karta
+  // ukáže „0 lekcí za 30 dní“.
   const zaklady = lekceKurzu.get("Kurz Základy investování") ?? [];
-  for (const [i, lessonId] of zaklady.slice(0, 2).entries()) {
-    await db.lessonProgress.create({ data: { clientId: evaId, lessonId, completedAt: den(-50 + i * 5) } });
+  if (zaklady[0]) {
+    await db.lessonProgress.create({
+      data: { clientId: evaId, lessonId: zaklady[0], completedAt: den(-12) },
+    });
   }
-  await db.clientBadge.create({ data: { clientId: evaId, kind: "PRVNI_LEKCE", awardedAt: den(-50) } });
+  await db.clientBadge.create({
+    data: { clientId: evaId, kind: "PRVNI_LEKCE", awardedAt: den(-12) },
+  });
+
+  // Eva chodí do klientské části pravidelně (9 z posledních 12 týdnů),
+  // ať karta i její přehled ukazují aktivní klientku — na rozdíl od „Nechodí“.
+  const evaTydny = new Set([0, 1, 2, 3, 5, 6, 8, 9, 11].map((tydnu) => isoTyden(den(-tydnu * 7))));
+  await db.clientActiveWeek.createMany({
+    data: [...evaTydny].map((week) => ({ clientId: evaId, week })),
+  });
+
+  // Další tři členové s účtem, ať Eva v pořadí bodů není sama („2. z 4“).
+  // Heslo je náhodné a nikde se neukáže — přihlásit se do nich nedá.
+  // Ondřej má víc bodů než Eva (85), Simona a Jana méně; Jana navíc
+  // poslední týdny nechodí (filtr „platí, ale nechodí“).
+  const technicka = lekceKurzu.get("Kurz Technická analýza") ?? [];
+  const dalsiClenove = [
+    { email: "ondrej.kratochvil@example.test", lekce: technicka.slice(0, 3), tydny: 12, od: 0 },
+    { email: "simona.kralova@example.test", lekce: zaklady.slice(0, 2), tydny: 6, od: 0 },
+    { email: "jana.prochazkova@example.test", lekce: [], tydny: 4, od: 6 },
+  ];
+  for (const clen of dalsiClenove) {
+    const clientId = idKlientu.get(clen.email)!;
+    await db.clientAccount.create({
+      data: {
+        clientId,
+        passwordHash: await zahesluj(randomBytes(32).toString("base64url")),
+        passwordSetAt: den(-50),
+        invitedAt: den(-55),
+        invitedById: tym.id,
+        notificationsEnabled: false,
+        lastLoginAt: den(-clen.od * 7 - 1),
+        lastSeenAt: den(-clen.od * 7 - 1),
+      },
+    });
+    const tydny = new Set(
+      Array.from({ length: clen.tydny }, (_, i) => isoTyden(den(-(clen.od + i) * 7))),
+    );
+    await db.clientActiveWeek.createMany({
+      data: [...tydny].map((week) => ({ clientId, week })),
+    });
+    for (const [i, lessonId] of clen.lekce.entries()) {
+      await db.lessonProgress.create({
+        data: { clientId, lessonId, completedAt: den(-20 + i * 5) },
+      });
+    }
+    if (clen.lekce.length > 0) {
+      await db.clientBadge.create({
+        data: { clientId, kind: "PRVNI_LEKCE", awardedAt: den(-20) },
+      });
+    }
+  }
 
   for (const clanek of UKAZKOVE_CLANKY) {
     await db.memberPost.create({
@@ -501,6 +664,107 @@ export async function naplnUkazku() {
       data: { clientId, userId: tym.id, title: u.title, dueAt: den(u.dni, 9) },
     });
   }
+
+  // --- Doporučitelé, slevové kódy, vlastní pole a pravidlo -----------------
+  // Bez nich by zájemce viděl jen „Zatím žádný…“ a funkce by mu unikly.
+  const ondrejId = idKlientu.get("ondrej.kratochvil@example.test")!;
+  const katerinaId = idKlientu.get("katerina.vesela@example.test")!;
+  const ondrej = await db.referrer.create({
+    data: {
+      kind: "KLIENT",
+      name: "Ondřej Kratochvíl",
+      clientId: ondrejId,
+      rewardPercent: 10,
+      createdAt: den(-60),
+    },
+  });
+  const partner = await db.referrer.create({
+    data: {
+      kind: "PARTNER",
+      name: "Podcast Investiční ráno",
+      rewardPercent: 15,
+      note: "Vymyšlený partner pro ukázku.",
+      createdAt: den(-30),
+    },
+  });
+  // Kateřinu přivedl Ondřej — odměna vznikne stejnou funkcí jako v provozu.
+  await db.client.update({ where: { id: katerinaId }, data: { referredById: ondrej.id } });
+  for (const o of await db.order.findMany({
+    where: { clientId: katerinaId },
+    select: { id: true },
+  })) {
+    await db.$transaction(async (tx) => {
+      await tx.order.update({ where: { id: o.id }, data: { referrerId: ondrej.id } });
+      await prepocitejOdmenu(tx, o.id, null);
+    });
+  }
+
+  await db.discountCode.create({
+    data: {
+      code: "ONDREJ10",
+      kind: "PROCENTA",
+      value: 10,
+      referrerId: ondrej.id,
+      oncePerClient: true,
+    },
+  });
+  await db.discountCode.create({
+    data: { code: "RANO15", kind: "PROCENTA", value: 15, referrerId: partner.id, validTo: den(60) },
+  });
+  const kodKurzu = await db.discountCode.create({
+    data: {
+      code: "PODZIM500",
+      kind: "CASTKA",
+      value: 500,
+      note: "Podzimní akce na kurzy.",
+      validFrom: den(-7),
+      validTo: den(21),
+      maxUses: 50,
+    },
+  });
+  for (const nazev of ["Kurz Základy investování", "Kurz Technická analýza"]) {
+    const produkt = produkty.get(nazev);
+    if (produkt)
+      await db.discountCodeProduct.create({ data: { codeId: kodKurzu.id, productId: produkt.id } });
+  }
+
+  const zkusenost = await db.clientField.create({
+    data: {
+      name: "Zkušenost s investováním",
+      kind: "VYBER",
+      options: ["Začátečník", "Mírně pokročilý", "Pokročilý"],
+      position: 1,
+    },
+  });
+  const brokerUcet = await db.clientField.create({
+    data: { name: "Má účet u brokera", kind: "ANO_NE", position: 2 },
+  });
+  for (const [email, uroven, ucet] of [
+    [UKAZKOVY_KLIENT.email, "Začátečník", "ne"],
+    ["ondrej.kratochvil@example.test", "Pokročilý", "ano"],
+    ["simona.kralova@example.test", "Mírně pokročilý", "ano"],
+  ] as const) {
+    const clientId = idKlientu.get(email)!;
+    await db.clientFieldValue.createMany({
+      data: [
+        { clientId, fieldId: zkusenost.id, value: uroven, updatedById: tym.id },
+        { clientId, fieldId: brokerUcet.id, value: ucet, updatedById: tym.id },
+      ],
+    });
+  }
+
+  // Plánovač v ukázce pravidla nespouští — zapnuté jen ukazuje, jak vypadá.
+  await db.customRule.create({
+    data: {
+      name: "VIP klient přestal chodit",
+      enabled: true,
+      conditions: [
+        { druh: "stitek", tagId: stitky.get("VIP")!, ma: true },
+        { druh: "nechodi", dni: 30 },
+      ],
+      actions: [{ druh: "ukol", userId: tym.id, nazev: "Ozvat se a zeptat, jak mu jde kurz" }],
+    },
+  });
 
   return { klientu: KLIENTI.length, faktur: zaplacene.length, lekci };
 }

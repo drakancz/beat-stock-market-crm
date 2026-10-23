@@ -87,7 +87,7 @@ async function main() {
 
   const stavajici = await db.user.findUnique({
     where: { email },
-    select: { id: true, name: true },
+    select: { id: true, name: true, twoFactor: { select: { id: true } } },
   });
 
   const jmeno = stavajici
@@ -110,6 +110,15 @@ async function main() {
 
   const potvrzeni = await zeptejSeNaHeslo("Heslo ještě jednou: ");
   if (heslo !== potvrzeni) throw new Error("Hesla se neshodují.");
+
+  // Tajemství dvoufázového ověření je zašifrované klíčem z `AUTH_SECRET`
+  // (`src/lib/tajemstvi.ts`). Po jeho výměně ho nejde přečíst a přihlášení
+  // spadne — jediná cesta zpátky je ověření zrušit a nastavit znovu.
+  const zrusitDvoufazove =
+    stavajici?.twoFactor != null &&
+    (await zeptejSe("Zrušit dvoufázové ověření? Nutné po výměně AUTH_SECRET (ano/ne): ").then(
+      (odpoved) => odpoved.toLowerCase() === "ano",
+    ));
 
   const otisk = await zahesluj(heslo);
   const ted = new Date();
@@ -150,11 +159,28 @@ async function main() {
       },
     });
 
+    if (zrusitDvoufazove) {
+      await tx.twoFactor.delete({ where: { userId: ulozeny.id } });
+      await tx.auditLogEntry.create({
+        data: {
+          userId: ulozeny.id,
+          entity: "users",
+          entityId: ulozeny.id,
+          action: "uzivatel.dvoufazove-vypnuto",
+          after: { zpusob: "příkaz auth:admin" },
+        },
+      });
+    }
+
     return ulozeny;
   });
 
   console.info(`\nHotovo. ${uzivatel.name} se může přihlásit na http://localhost:3000/prihlaseni`);
-  console.info("Doporučuju hned si v Mém účtu zapnout dvoufázové ověření.\n");
+  console.info(
+    zrusitDvoufazove
+      ? "Dvoufázové ověření je zrušené — po přihlášení si ho v Mém profilu nastav znovu.\n"
+      : "Doporučuju hned si v Mém účtu zapnout dvoufázové ověření.\n",
+  );
 }
 
 main()

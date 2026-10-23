@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CheckCircle2, Circle, Compass, RotateCcw, X } from "lucide-react";
 
+import { PrepinacJazyka } from "@/components/prepinac-jazyka";
 import { Button } from "@/components/ui/button";
+import type { Jazyk } from "@/lib/jazyk";
 import { KROKY_PRUVODCE, type DruhPruvodce, type KrokPruvodce } from "@/lib/pruvodce-ukazkou";
+import { TEXTY_VSTUPU } from "@/lib/texty-vstupu";
 import { cn } from "@/lib/utils";
 
 /**
@@ -17,7 +20,8 @@ import { cn } from "@/lib/utils";
  * Nic nemění — co je prošlé, si pamatuje jen prohlížeč návštěvníka.
  *
  * Krok se odškrtne sám, když návštěvník otevře jeho stránku, nebo ručně.
- * Při první návštěvě se panel sám rozbalí.
+ * Při první návštěvě se panel sám rozbalí. Texty jsou česky nebo anglicky
+ * podle přepínače v hlavičce (src/lib/jazyk.ts, 23. 10. 2026).
  */
 
 const KLIC = "bsm-pruvodce";
@@ -78,8 +82,10 @@ function jePodCestou(pathname: string, { cesta, presne }: KrokPruvodce) {
   return pathname === cesta || pathname.startsWith(`${cesta}/`);
 }
 
-export function PruvodceUkazkou({ druh }: { druh: DruhPruvodce }) {
+export function PruvodceUkazkou({ druh, jazyk }: { druh: DruhPruvodce; jazyk: Jazyk }) {
   const kroky = KROKY_PRUVODCE[druh];
+  const t = TEXTY_VSTUPU[jazyk].pruvodce;
+  const vKroku = (krok: KrokPruvodce) => (jazyk === "en" ? krok.en : krok);
   const pathname = usePathname();
   // Na serveru `null` — úložiště zná jen prohlížeč, panel se ukáže až po hydrataci.
   const text = useSyncExternalStore(
@@ -95,6 +101,18 @@ export function PruvodceUkazkou({ druh }: { druh: DruhPruvodce }) {
     const novy = kroky.find((k) => jePodCestou(pathname, k) && !stav.prosle.includes(k.href));
     if (novy) zapis(druh, { ...stav, prosle: [...stav.prosle, novy.href] });
   }, [pathname, kroky, druh, stav]);
+
+  // Na telefonu by otevřený panel zakryl každou další stránku — sbalí se
+  // při přechodu jinam (i spodní lištou). Při prvním načtení zůstane, jak je.
+  // Musí běžet až po odškrtnutí výš, které zapisuje ještě starý stav.
+  const predchozi = useRef(pathname);
+  useEffect(() => {
+    if (predchozi.current === pathname) return;
+    predchozi.current = pathname;
+    if (window.matchMedia("(min-width: 640px)").matches) return;
+    const aktualni = rozloz(precti(druh));
+    if (aktualni.otevreno) zapis(druh, { ...aktualni, otevreno: false });
+  }, [pathname, druh]);
 
   if (!stav) return null;
 
@@ -121,7 +139,7 @@ export function PruvodceUkazkou({ druh }: { druh: DruhPruvodce }) {
         className={cn("fixed right-4 z-50 shadow-lg", dole)}
       >
         <Compass />
-        Co si vyzkoušet
+        <span lang={jazyk}>{t.tlacitko}</span>
         <span className="text-xs opacity-80">
           {hotovo}/{kroky.length}
         </span>
@@ -131,7 +149,8 @@ export function PruvodceUkazkou({ druh }: { druh: DruhPruvodce }) {
 
   return (
     <section
-      aria-label="Co si tu vyzkoušet"
+      aria-label={t.nadpis}
+      lang={jazyk}
       className={cn(
         "bg-background fixed inset-x-3 z-50 max-h-[70svh] overflow-y-auto rounded-xl border shadow-xl sm:inset-x-auto sm:right-4 sm:w-80",
         dole,
@@ -139,17 +158,17 @@ export function PruvodceUkazkou({ druh }: { druh: DruhPruvodce }) {
     >
       <div className="flex items-start justify-between gap-2 border-b px-4 py-3">
         <div className="min-w-0">
-          <h2 className="font-semibold">Co si tu vyzkoušet</h2>
-          <p className="text-muted-foreground text-xs">
-            Prošli jste {hotovo} z {kroky.length}. Klidně cokoli změňte — v noci se vše vrátí.
-          </p>
+          <h2 className="font-semibold">{t.nadpis}</h2>
+          <p className="text-muted-foreground text-xs">{t.prosli(hotovo, kroky.length)}</p>
+          {t.poznamka && <p className="text-muted-foreground mt-1 text-xs">{t.poznamka}</p>}
+          <PrepinacJazyka jazyk={jazyk} className="mt-2" />
         </div>
         <Button
           type="button"
           variant="ghost"
           size="icon"
           className="-mr-2 shrink-0"
-          aria-label="Sbalit průvodce"
+          aria-label={t.sbalit}
           onClick={() => zmen({ otevreno: false })}
         >
           <X />
@@ -165,10 +184,10 @@ export function PruvodceUkazkou({ druh }: { druh: DruhPruvodce }) {
                 type="button"
                 onClick={() => prepni(krok.href)}
                 aria-label={
-                  prosly ? `Zrušit odškrtnutí: ${krok.nazev}` : `Odškrtnout: ${krok.nazev}`
+                  prosly ? t.zrusitOdskrtnuti(vKroku(krok).nazev) : t.odskrtnout(vKroku(krok).nazev)
                 }
                 aria-pressed={prosly}
-                className="text-primary mt-0.5 shrink-0"
+                className="text-primary -mx-0.5 -mb-0.5 shrink-0 p-0.5"
               >
                 {prosly ? (
                   <CheckCircle2 className="size-5" aria-hidden />
@@ -188,9 +207,9 @@ export function PruvodceUkazkou({ druh }: { druh: DruhPruvodce }) {
                     prosly && "text-muted-foreground line-through",
                   )}
                 >
-                  {krok.nazev}
+                  {vKroku(krok).nazev}
                 </Link>
-                <p className="text-muted-foreground text-xs">{krok.popis}</p>
+                <p className="text-muted-foreground text-xs">{vKroku(krok).popis}</p>
               </div>
             </li>
           );
@@ -201,7 +220,7 @@ export function PruvodceUkazkou({ druh }: { druh: DruhPruvodce }) {
         <div className="border-t px-4 py-2">
           <Button type="button" variant="ghost" size="sm" onClick={() => zmen({ prosle: [] })}>
             <RotateCcw />
-            Začít znovu
+            {t.zacitZnovu}
           </Button>
         </div>
       )}

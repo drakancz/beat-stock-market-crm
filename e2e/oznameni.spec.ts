@@ -133,7 +133,7 @@ test.describe("zprávy od administrátora", () => {
       // Klient vidí odznak s počtem a zprávu, otevřením ji přečte.
       const klientska = await prohlizecKlienta(browser);
       await prihlasKlienta(klientska, klient.email, klient.heslo);
-      await expect(klientska.getByRole("link", { name: "Zprávy, nepřečtené: 1" })).toBeVisible();
+      await expect(klientska.getByRole("link", { name: /Zprávy\s*1 nepřečtené/ })).toBeVisible();
       // Klik se opakuje, kdyby přišel dřív, než stránka ožije (pomalý GitHub).
       await expect(async () => {
         await klientska.getByRole("link", { name: /^Zprávy/ }).click();

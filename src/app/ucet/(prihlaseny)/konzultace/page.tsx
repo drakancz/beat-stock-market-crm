@@ -126,7 +126,7 @@ export default async function KonzultaceKlientaPage() {
                           href={r.slot.joinUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-primary mt-1 inline-flex items-center gap-1 text-sm font-medium underline-offset-4 hover:underline"
+                          className="text-primary mt-1 inline-flex min-h-6 items-center gap-1 text-sm font-medium underline-offset-4 hover:underline"
                         >
                           Připojit se
                           <ExternalLink className="size-3.5" aria-hidden />

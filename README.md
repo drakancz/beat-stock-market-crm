@@ -10,13 +10,15 @@ Next.js 16 · React 19 · TypeScript · PostgreSQL · Prisma · Playwright · Do
 | ----------------------------------------------- | ------------------------------------------------- |
 | ![Dashboard](docs/snimky/dashboard.png)         | ![Klientská část](docs/snimky/klient-telefon.png) |
 | ![Karta klienta](docs/snimky/karta-klienta.png) | ![Lekce kurzu](docs/snimky/lekce-telefon.png)     |
+| ![Vstup do ukázky anglicky](docs/snimky/prihlaseni-en.png) | ![Průvodce ukázkou anglicky](docs/snimky/pruvodce-telefon-en.png) |
 
 > **In English:** A production CRM and client-facing PWA for a company
 > selling investment education — orders from the website, team workflow,
 > memberships, courses with badges and push notifications. Next.js 16,
 > React 19, TypeScript, PostgreSQL/Prisma, 320+ Playwright tests (570 runs
 > across three browsers) in GitHub Actions against the production build,
-> deployed on Railway, with a built-in demo mode for visitors. **The code was written by AI
+> deployed on Railway, with a built-in demo mode for visitors — sign-in,
+> demo banner and a guided tour are available in English. **The code was written by AI
 > (Claude Code) under my direction** — I owned requirements, permissions,
 > security rules, review, testing and operations. The rest of this README
 > is in Czech, like the code comments.
@@ -86,6 +88,10 @@ Next.js 16 · React 19 · TypeScript · PostgreSQL · Prisma · Playwright · Do
   kalendář, AI, nahrávání souborů), je vypnuté přímo v místě, kde se
   služba volá, ne skrytím tlačítka; zkušební účty si nezmění heslo ani
   nezamknou ostatní.
+- **Vstup do ukázky i v angličtině** — přihlášení, pruh ukázky a průvodce
+  mají přepínač Česky / English (volba se pamatuje v cookie), aby si
+  ukázku prošel i zahraniční návštěvník; samotná aplikace zůstává česká
+  a průvodce u každého kroku řekne, na co se dívat.
 
 **Pro klienty**
 
@@ -194,8 +200,9 @@ ve třech prohlížečích najednou. Hlídají oprávnění (kdo co nesmí vidě
 hlavní průchody, zobrazení na telefonu a bezpečnostní hlavičky.
 
 Celá sada se pouští **v GitHub Actions u každého pull requestu**
-(`.github/workflows/testy.yml`) proti produkčnímu sestavení — desktop,
-Android a iPhone každý na vlastním stroji. Pull request s červeným
+(`.github/workflows/testy.yml`) proti produkčnímu sestavení — desktop
+všechno, Android a iPhone obrazovky pro klienty a rozložení, každý na
+vlastním stroji. Pull request s červeným
 výsledkem se neslučuje. Doma se pouštějí jen testy, kterých se změna týká.
 
 ## Jak projekt vznikal: s AI
@@ -215,7 +222,7 @@ otestovaná a udržovatelná.**
 - **Oprávnění a pravidla.** U každé nové obrazovky jsem rozhodl, kdo ji
   smí vidět a měnit — AI se musela zeptat, nesměla to domýšlet.
 - **Pravidla vývoje**, která AI dodržovala (níž).
-- **Kontrola každé změny** v prohlížeči na počítači i na telefonu,
+- **Kontrola změn** v prohlížeči na počítači i na telefonu,
   hlášení chyb a připomínek (tlačítko navíc, jiné chování, vzhled).
 - **Provoz:** nasazení na Railway, hlídání každého nasazení, Sentry,
   zálohy, klíče ke službám — tajné údaje AI nikdy neviděla.

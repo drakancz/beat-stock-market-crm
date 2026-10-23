@@ -96,7 +96,7 @@ export default async function KurzKlientaPage({ params }: PageProps<"/ucet/kurzy
             <Award className="mr-1.5 inline size-4 align-[-3px]" aria-hidden />
             Certifikát dostanete, až budete mít hotové všechny lekce a splněné kvízy.
             {chybi.lekciZbyva > 0 &&
-              ` Zbývá ${pocet(chybi.lekciZbyva, "lekce", "lekce", "lekcí")}.`}
+              ` ${chybi.lekciZbyva >= 2 && chybi.lekciZbyva <= 4 ? "Zbývají" : "Zbývá"} ${pocet(chybi.lekciZbyva, "lekce", "lekce", "lekcí")}.`}
             {chybi.kvizyZbyva.length > 0 &&
               ` Nesplněné kvízy u lekcí: ${chybi.kvizyZbyva.join(", ")}.`}
           </p>

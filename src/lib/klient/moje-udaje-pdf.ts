@@ -94,6 +94,9 @@ export function vytvorPdfMojichUdaju(udaje: MojeUdaje): Promise<Buffer> {
         doc.moveDown(0.3);
       }
       for (const [klic, hodnota] of Object.entries(zaznam)) {
+        // Zalomení stránky uprostřed `continued` textu ztratí písmo popisku
+        // a nová stránka barvu — řádek, který se nevejde, zalomíme sami předem.
+        if (doc.y + doc.currentLineHeight(true) > doc.page.maxY()) doc.addPage();
         doc.font("tucne").fontSize(9.5).fillColor(BARVY.tlumena);
         text(`${klic}: `, { continued: true });
         doc.font("text").fillColor(BARVY.inkoust);

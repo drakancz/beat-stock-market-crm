@@ -10,7 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { signIn } from "@/lib/auth-client";
-import { chybaCesky } from "@/lib/auth-errors";
+import type { Jazyk } from "@/lib/jazyk";
+import { chybaPrihlaseni, TEXTY_VSTUPU } from "@/lib/texty-vstupu";
 
 /**
  * Kam se člověk vrátí po přihlášení (`?pokracovat=`).
@@ -40,7 +41,15 @@ function bezpecnyCil(pozadovano: string | null): string {
  * Že účet druhý faktor má, se tím **neprozradí nikomu, kdo nezná heslo** —
  * doptání přijde až po jeho ověření.
  */
-export function PrihlaseniForm({ ukazka }: { ukazka?: { email: string; heslo: string } }) {
+export function PrihlaseniForm({
+  jazyk,
+  ukazka,
+}: {
+  jazyk: Jazyk;
+  ukazka?: { email: string; heslo: string };
+}) {
+  const f = TEXTY_VSTUPU[jazyk].formular;
+  const t = TEXTY_VSTUPU[jazyk].tym;
   const router = useRouter();
   const parametry = useSearchParams();
 
@@ -87,7 +96,7 @@ export function PrihlaseniForm({ ukazka }: { ukazka?: { email: string; heslo: st
     }
 
     if (odpoved?.error) {
-      setChyba(chybaCesky(odpoved.code ?? odpoved.error));
+      setChyba(chybaPrihlaseni(jazyk, "tym", odpoved.code ?? odpoved.error));
       return;
     }
 
@@ -112,14 +121,13 @@ export function PrihlaseniForm({ ukazka }: { ukazka?: { email: string; heslo: st
           <div className="flex items-start gap-2 text-sm">
             <FlaskConical className="mt-0.5 size-4 shrink-0" aria-hidden />
             <p>
-              <strong>Ukázka pro zájemce.</strong> Data jsou vymyšlená a každou noc se obnoví —
-              klidně cokoli změň nebo smaž.
+              <strong>{f.ukazkaNadpis}</strong> {t.ukazka}
             </p>
           </div>
           <dl className="text-muted-foreground grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-            <dt>E-mail</dt>
+            <dt>{f.email}</dt>
             <dd className="text-foreground font-mono break-all">{ukazka.email}</dd>
-            <dt>Heslo</dt>
+            <dt>{f.heslo}</dt>
             <dd className="text-foreground font-mono break-all">{ukazka.heslo}</dd>
           </dl>
           <div className="flex flex-col gap-2">
@@ -129,10 +137,10 @@ export function PrihlaseniForm({ ukazka }: { ukazka?: { email: string; heslo: st
               disabled={odesila}
               onClick={() => prihlasit(ukazka.email, ukazka.heslo)}
             >
-              Vyzkoušet jako člen týmu
+              {f.jakoTym}
             </Button>
             <Button asChild variant="outline" className="w-full">
-              <Link href="/ucet/prihlaseni">Vyzkoušet jako klient</Link>
+              <Link href="/ucet/prihlaseni">{f.jakoKlient}</Link>
             </Button>
           </div>
         </div>
@@ -147,23 +155,19 @@ export function PrihlaseniForm({ ukazka }: { ukazka?: { email: string; heslo: st
       {hesloZmeneno && !chyba && !kodPotreba && (
         <Alert>
           <ShieldCheck />
-          <AlertDescription>
-            Heslo je změněné a všechna zařízení jsou odhlášená. Přihlas se novým heslem.
-          </AlertDescription>
+          <AlertDescription>{t.hesloZmeneno}</AlertDescription>
         </Alert>
       )}
 
       {kodPotreba && (
         <Alert>
           <ShieldCheck />
-          <AlertDescription>
-            Heslo sedí. Ještě opiš kód z ověřovací aplikace v telefonu.
-          </AlertDescription>
+          <AlertDescription>{t.kodPotreba}</AlertDescription>
         </Alert>
       )}
 
       <div className="space-y-2">
-        <Label htmlFor="email">E-mail</Label>
+        <Label htmlFor="email">{f.email}</Label>
         <Input
           id="email"
           name="email"
@@ -172,20 +176,20 @@ export function PrihlaseniForm({ ukazka }: { ukazka?: { email: string; heslo: st
           required
           autoFocus={!kodPotreba}
           readOnly={kodPotreba}
-          placeholder="jmeno@beatstockmarket.cz"
+          placeholder={t.vychoziEmail}
         />
       </div>
 
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <Label htmlFor="heslo">Heslo</Label>
+          <Label htmlFor="heslo">{f.heslo}</Label>
           <Link
             href="/zapomenute-heslo"
             // `py-1.5 -my-1.5`: větší plocha pro prst na telefonu (26. 9. 2026),
             // řádek nad polem se tím nezvětší.
             className="text-muted-foreground hover:text-foreground -my-1.5 py-1.5 text-xs underline underline-offset-4"
           >
-            Zapomenuté heslo
+            {f.zapomenute}
           </Link>
         </div>
         <Input
@@ -200,7 +204,7 @@ export function PrihlaseniForm({ ukazka }: { ukazka?: { email: string; heslo: st
 
       {kodPotreba && (
         <div className="space-y-2">
-          <Label htmlFor="kod">{zalozni ? "Záložní kód" : "Kód z aplikace"}</Label>
+          <Label htmlFor="kod">{zalozni ? f.zalozniKod : f.kodZAplikace}</Label>
           <Input
             id="kod"
             name="kod"
@@ -208,7 +212,7 @@ export function PrihlaseniForm({ ukazka }: { ukazka?: { email: string; heslo: st
             autoComplete="one-time-code"
             required
             autoFocus
-            placeholder={zalozni ? "např. a1b2c3d4e5" : "123456"}
+            placeholder={zalozni ? f.prikladZalozniho : "123456"}
             className={zalozni ? undefined : "text-center font-mono text-lg tracking-[0.4em]"}
           />
         </div>
@@ -216,7 +220,7 @@ export function PrihlaseniForm({ ukazka }: { ukazka?: { email: string; heslo: st
 
       <Button type="submit" className="w-full" disabled={odesila}>
         {odesila && <Loader2 className="animate-spin" />}
-        {kodPotreba ? "Ověřit a přihlásit" : "Přihlásit se"}
+        {kodPotreba ? f.overitAPrihlasit : f.prihlasitSe}
       </Button>
 
       {kodPotreba && (
@@ -228,7 +232,7 @@ export function PrihlaseniForm({ ukazka }: { ukazka?: { email: string; heslo: st
           }}
           className="text-muted-foreground hover:text-foreground w-full text-center text-xs underline underline-offset-4"
         >
-          {zalozni ? "Zpět na kód z aplikace" : "Nemám telefon — použít záložní kód"}
+          {zalozni ? f.zpetNaKod : f.bezTelefonu}
         </button>
       )}
     </form>

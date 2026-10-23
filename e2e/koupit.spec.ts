@@ -71,6 +71,38 @@ async function objednavkyKlienta(clientId: string) {
 }
 
 test.describe("Koupit — klient", () => {
+  test(
+    "na telefonu je název produktu nad cenou, ne zmačkaný vedle ní",
+    { tag: "@telefon" },
+    async ({ browser }) => {
+      const nazev = `E2E Kurz s delším názvem ${pripona()}`;
+      await zalozProdukt(nazev, "KURZ");
+      const klient = await zalozKlientaSUctem(`Rozložení ${pripona()}`);
+
+      const page = await prohlizecKlienta(browser);
+      await prihlasKlienta(page, klient.email, klient.heslo);
+      await otevriAzUvidis(
+        page,
+        "/ucet/koupit",
+        page.getByRole("heading", { name: "Koupit", level: 1 }),
+      );
+      const radek = page.getByTestId("produkt-k-nakupu").filter({ hasText: nazev });
+      const jmeno = (await radek.getByText(nazev).boundingBox())!;
+      const tlacitko = (await radek
+        .getByRole("button", { name: `Koupit: ${nazev}` })
+        .boundingBox())!;
+
+      if (page.viewportSize()!.width < 640) {
+        // Pod sebou: tlačítko až pod názvem.
+        expect(tlacitko.y).toBeGreaterThanOrEqual(jmeno.y + jmeno.height);
+      } else {
+        // Na počítači v jednom řádku.
+        expect(tlacitko.x).toBeGreaterThan(jmeno.x + jmeno.width);
+      }
+      await bezVodorovnehoPosuvu(page);
+    },
+  );
+
   test("koupí kurz se slevou, převod ukáže QR a VS, zaplatí kartou; v CRM z klientské části", async ({
     browser,
   }) => {

@@ -61,7 +61,7 @@ export default async function ObjednavkyPage({ searchParams }: PageProps<"/objed
           <h2 className="text-2xl font-semibold">Objednávky</h2>
           <p className="text-muted-foreground mt-1 text-sm">
             Co si klienti koupili. Objednávky chodí z Landing Page a platí se přes bránu nebo ručně.
-            Přístup do programu je od 23. 9. 2026 u klienta, v sekci Klienti.
+            Přístup do programu se povoluje u klienta, v sekci Klienti.
           </p>
         </div>
         {/* Faktury a export pro účetnictví (19. 10. 2026) — vidí každý přihlášený. */}

@@ -262,7 +262,7 @@ export default async function KlientPage({ params }: PageProps<"/klienti/[id]">)
            * doby je tlačítko znecitlivěné, aby nevypadalo jako hotová
            * funkce. Do 23. 9. 2026 se jmenovalo Napsat.
            */}
-          <Button variant="outline" disabled title="Posílání e-mailů z karty přijde ve fázi 2.">
+          <Button variant="outline" disabled title="Posílání e-mailů přímo z karty se připravuje.">
             <Mail />
             Poslat email
           </Button>

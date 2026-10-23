@@ -2,7 +2,12 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { KROKY_PRUVODCE } from "../src/lib/pruvodce-ukazkou";
 import { UKAZKOVY_TYM, VYPNUTO_V_UKAZCE } from "../src/lib/ukazka";
-import { bezVodorovnehoPosuvu, nahodnaAdresa } from "../e2e/pomocne";
+import {
+  bezVodorovnehoPosuvu,
+  nahodnaAdresa,
+  upravUzivatele,
+  zalozUzivatele,
+} from "../e2e/pomocne";
 
 /**
  * Ukázkový režim (Jakub, 22. 10. 2026; `src/lib/ukazka.ts`):
@@ -28,6 +33,8 @@ test.describe("Ukázka — člen týmu", () => {
     // Údaje jsou na stránce schválně — zájemce je nemá odkud jinak znát.
     await expect(page.getByText(UKAZKOVY_TYM.email)).toBeVisible();
     await expect(page.getByText(UKAZKOVY_TYM.heslo)).toBeVisible();
+    // Hlavní oblast pro čtečky obrazovky (Lighthouse, 22. 10. 2026).
+    await expect(page.getByRole("main")).toBeVisible();
     await bezVodorovnehoPosuvu(page);
 
     await page.getByRole("button", { name: "Vyzkoušet jako člen týmu" }).click();
@@ -45,6 +52,19 @@ test.describe("Ukázka — člen týmu", () => {
     // Na přehledu Správy chybí odkaz i e-maily kolegů.
     await page.goto("/sprava");
     await expect(page.getByRole("link", { name: "Spravovat uživatele" })).toHaveCount(0);
+    await expect(page.getByText("@beatstockmarket.test")).toHaveCount(0);
+  });
+
+  test("ve Smazaných nejsou e-maily odložených účtů týmu", async ({ page }) => {
+    // Účty týmu noční obnova nemaže, takže na serveru ukázky můžou být
+    // i odložení skuteční kolegové (bezpečnostní prohlídka, 23. 10. 2026).
+    const kolega = await zalozUzivatele("uzivatel", "Odlozeny");
+    await upravUzivatele(kolega.id, { deletedAt: new Date() });
+
+    await jakoClenTymu(page);
+    await page.goto("/smazane");
+    await expect(page.getByText(kolega.name)).toBeVisible();
+    await expect(page.getByText(kolega.email)).toHaveCount(0);
     await expect(page.getByText("@beatstockmarket.test")).toHaveCount(0);
   });
 
@@ -124,6 +144,41 @@ test.describe("Ukázka — člen týmu", () => {
     },
   );
 
+  test("ukázka nemá prázdné obrazovky a Eva je aktivní klientka", async ({ page }) => {
+    await jakoClenTymu(page);
+    // Bez vzorových záznamů by zájemce viděl jen „Zatím žádný…“.
+    await page.goto("/produkty/slevove-kody");
+    await expect(page.getByText("PODZIM500").first()).toBeVisible();
+    await page.goto("/produkty/doporucitele");
+    await expect(page.getByText("Podcast Investiční ráno").first()).toBeVisible();
+    await page.goto("/nastaveni/pole");
+    await expect(page.getByText("Zkušenost s investováním").first()).toBeVisible();
+    await page.goto("/pravidla");
+    await expect(page.getByText("VIP klient přestal chodit").first()).toBeVisible();
+
+    // Čísla členství za 30 dní nejsou nuly: 2 prodloužili, 1 odešel, 2 noví.
+    await page.goto("/dashboard");
+    const udaj = (titulek: string) =>
+      page
+        .locator("div")
+        .filter({ has: page.getByRole("term").filter({ hasText: titulek }) })
+        .last();
+    await expect(udaj("Míra prodloužení").getByRole("definition").first()).toHaveText("67 %");
+    await expect(udaj("Odešli").getByRole("definition").first()).toHaveText("1");
+    await expect(udaj("Noví členové").getByRole("definition").first()).toHaveText("2");
+
+    await page.goto("/klienti");
+    await page.getByRole("link", { name: "Eva Malá" }).first().click();
+    await expect(page.getByText("9 z posledních 12")).toBeVisible();
+  });
+
+  test("Eva není v pořadí bodů sama", async ({ page }) => {
+    await page.goto("/ucet/prihlaseni");
+    await page.getByRole("button", { name: "Vyzkoušet jako klient" }).click();
+    await expect(page.getByRole("heading", { name: "Dobrý den, Eva Malá" })).toBeVisible();
+    await expect(page.getByText(/pořadí 2\. z 4/)).toBeVisible();
+  });
+
   test("faktury vystavila vymyšlená firma", async ({ page }) => {
     await jakoClenTymu(page);
     await page.goto("/nastaveni/firma");
@@ -145,8 +200,49 @@ test.describe("Ukázka — klient", () => {
       await expect(page.getByText("Základy investování").first()).toBeVisible();
       await expect(page.getByText("Členství Klub BSM — rok").first()).toBeVisible();
       await bezVodorovnehoPosuvu(page);
+
+      // „Pokračovat“ vede na lekci s kvízem — krok průvodce „Kurz a kvíz“.
+      // Průvodce se při první návštěvě rozbalí a na telefonu by ho zakryl.
+      await page.getByRole("button", { name: "Sbalit průvodce" }).click();
+      await page
+        .getByRole("region", { name: "Pokračovat v kurzu" })
+        .getByRole("link", { name: "Pokračovat" })
+        .click();
+      await expect(page.getByText("Kvíz k lekci")).toBeVisible();
     },
   );
+
+  test(
+    "anglický vstup: pruh a průvodce anglicky, přepnout jde i zpět",
+    { tag: "@telefon" },
+    async ({ page }) => {
+      await page.goto("/ucet/prihlaseni");
+      await page.getByRole("button", { name: "English" }).click();
+      await page.getByRole("button", { name: "Try as a client" }).click();
+
+      await expect(page.getByText(/Demo: the data is made up/)).toBeVisible();
+      const pruvodce = page.getByRole("region", { name: "What to try here" });
+      await expect(pruvodce.getByRole("link", { name: "Course and quiz" })).toBeVisible();
+      await expect(pruvodce.getByText("The app is in Czech.", { exact: false })).toBeVisible();
+      await bezVodorovnehoPosuvu(page);
+
+      await pruvodce.getByRole("button", { name: "Česky" }).click();
+      await expect(page.getByRole("region", { name: "Co si tu vyzkoušet" })).toBeVisible();
+      await expect(page.getByText(PRUH)).toBeVisible();
+    },
+  );
+
+  test("platba kartou je vypnutá i s klíči GoPay na serveru", async ({ page }) => {
+    // Testovací kontejner má klíče k napodobenině GoPay (compose.yaml) —
+    // bez zábrany v ukázce by se tlačítko ukázalo (23. 10. 2026).
+    await page.goto("/ucet/prihlaseni");
+    await page.getByRole("button", { name: "Vyzkoušet jako klient" }).click();
+    await expect(page.getByRole("heading", { name: "Dobrý den, Eva Malá" })).toBeVisible();
+
+    // Eva má nezaplacenou objednávku — převodem zaplatit jde, kartou ne.
+    await expect(page.getByRole("link", { name: "Platba převodem" }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Zaplatit objednávku/ })).toHaveCount(0);
+  });
 
   test(
     "průvodce vede na stránky klientské části",
@@ -173,6 +269,24 @@ test.describe("Ukázka — klient", () => {
           : pruvodce.getByText(`Prošli jste ${i + 2} z 5`);
         await expect(pocet).toBeVisible();
       }
+    },
+  );
+
+  test(
+    "na telefonu se průvodce sbalí i po přechodu spodní lištou",
+    { tag: "@telefon" },
+    async ({ page }, testInfo) => {
+      test.skip(testInfo.project.name === "desktop", "spodní lišta je jen na telefonu");
+      await page.goto("/ucet/prihlaseni");
+      await page.getByRole("button", { name: "Vyzkoušet jako klient" }).click();
+      const pruvodce = page.getByRole("region", { name: "Co si tu vyzkoušet" });
+      await expect(pruvodce).toBeVisible();
+
+      // Jinak by otevřený panel zakryl stránku, na kterou návštěvník přešel.
+      await page.getByRole("link", { name: "Kurzy", exact: true }).last().click();
+      await expect(page).toHaveURL(/\/ucet\/kurzy$/);
+      await expect(pruvodce).toHaveCount(0);
+      await expect(page.getByRole("button", { name: /Co si vyzkoušet/ })).toBeVisible();
     },
   );
 });

@@ -56,10 +56,10 @@ export function NavigaceKlienta({
             key={polozka.href}
             href={polozka.href}
             aria-current={aktivni ? "page" : undefined}
-            // Celý název i na telefonu, kde je vidět jen zkrácený.
-            aria-label={
-              zpravy && neprectenych > 0 ? `Zprávy, nepřečtené: ${neprectenych}` : polozka.label
-            }
+            // Celý název i na telefonu, kde je vidět jen zkrácený. U zpráv
+            // s počtem se název skládá z obsahu (viz níž), ať sedí s tím,
+            // co je vidět — jinak odkaz nejde vyvolat hlasem.
+            aria-label={zpravy && neprectenych > 0 ? undefined : polozka.label}
             className={cn(
               "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 px-1 pt-2 pb-1.5 text-[11px] font-medium transition-colors",
               "sm:-mb-px sm:flex-none sm:flex-row sm:gap-1.5 sm:border-b-2 sm:px-2.5 sm:py-2 sm:text-sm sm:whitespace-nowrap",
@@ -72,9 +72,12 @@ export function NavigaceKlienta({
             <span className="truncate sm:hidden">{polozka.kratce}</span>
             <span className="hidden sm:inline">{polozka.label}</span>
             {zpravy && neprectenych > 0 && (
-              <span className="bg-primary text-primary-foreground absolute top-1 left-1/2 ml-1.5 rounded-full px-1.5 text-[10px] leading-4 tabular-nums sm:static sm:ml-0 sm:text-xs sm:leading-5">
-                {neprectenych}
-              </span>
+              <>
+                <span className="bg-primary text-primary-foreground absolute top-1 left-1/2 ml-1.5 rounded-full px-1.5 text-[10px] leading-4 tabular-nums sm:static sm:ml-0 sm:text-xs sm:leading-5">
+                  {neprectenych}
+                </span>
+                <span className="sr-only"> nepřečtené</span>
+              </>
             )}
           </Link>
         );

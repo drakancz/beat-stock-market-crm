@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { jakoDen } from "@/lib/obdobi";
+import { jakoDen } from "@/lib/den";
 
 import { upravPlatnost } from "../platnost-actions";
 

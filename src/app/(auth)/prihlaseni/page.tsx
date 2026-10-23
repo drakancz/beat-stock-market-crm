@@ -2,15 +2,21 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
+import { PrepinacJazyka } from "@/components/prepinac-jazyka";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { Jazyk } from "@/lib/jazyk";
+import { nactiJazyk } from "@/lib/jazyk-server";
 import { getViewer } from "@/lib/session";
+import { TEXTY_VSTUPU } from "@/lib/texty-vstupu";
 import { jeUkazka, UKAZKOVY_TYM } from "@/lib/ukazka";
 import { overDatabazi } from "@/lib/zdravi";
 
 import { PrihlaseniForm } from "./prihlaseni-form";
 
-export const metadata: Metadata = { title: "Přihlášení" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: TEXTY_VSTUPU[await nactiJazyk()].prihlaseni };
+}
 
 export const dynamic = "force-dynamic";
 
@@ -34,19 +40,25 @@ export default async function PrihlaseniPage() {
 
   if (await getViewer()) redirect("/dashboard");
 
-  return <Obsah />;
+  return <Obsah jazyk={await nactiJazyk()} />;
 }
 
-function Obsah() {
+function Obsah({ jazyk }: { jazyk: Jazyk }) {
+  const t = TEXTY_VSTUPU[jazyk];
   return (
-    <Card>
+    <Card lang={jazyk}>
       <CardHeader>
-        <CardTitle>Přihlášení</CardTitle>
-        <CardDescription>Zadej e-mail a heslo, kterými se do CRM dostáváš.</CardDescription>
+        <div className="flex items-start justify-between gap-2">
+          <CardTitle>
+            <h1>{t.prihlaseni}</h1>
+          </CardTitle>
+          <PrepinacJazyka jazyk={jazyk} />
+        </div>
+        <CardDescription>{t.tym.popis}</CardDescription>
       </CardHeader>
       <CardContent>
         <Suspense fallback={<Skeleton className="h-64 w-full" />}>
-          <PrihlaseniForm ukazka={jeUkazka() ? UKAZKOVY_TYM : undefined} />
+          <PrihlaseniForm jazyk={jazyk} ukazka={jeUkazka() ? UKAZKOVY_TYM : undefined} />
         </Suspense>
       </CardContent>
     </Card>

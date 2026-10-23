@@ -5,6 +5,7 @@ import { PruvodceUkazkou } from "@/components/pruvodce-ukazkou";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { SentryUzivatel } from "@/components/sentry-uzivatel";
 import { ZaznamObrazovek } from "@/components/zaznam-obrazovek";
+import { nactiJazyk } from "@/lib/jazyk-server";
 import { nactiPripominky } from "@/lib/queries";
 import { requireViewer } from "@/lib/session";
 import { jeUkazkovyTym } from "@/lib/ukazka";
@@ -40,7 +41,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           <div className="mx-auto w-full max-w-[1400px] space-y-6">{children}</div>
         </div>
         {/* Průvodce „Co si vyzkoušet“ jen pro ukázkový účet (Jakub, 22. 10. 2026). */}
-        {jeUkazkovyTym(viewer.email) && <PruvodceUkazkou druh="tym" />}
+        {jeUkazkovyTym(viewer.email) && <PruvodceUkazkou druh="tym" jazyk={await nactiJazyk()} />}
       </SidebarInset>
     </SidebarProvider>
   );

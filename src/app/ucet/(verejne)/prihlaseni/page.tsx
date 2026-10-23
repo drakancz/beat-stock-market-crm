@@ -2,14 +2,19 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
+import { PrepinacJazyka } from "@/components/prepinac-jazyka";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { nactiJazyk } from "@/lib/jazyk-server";
 import { getKlient } from "@/lib/klient/sezeni";
+import { TEXTY_VSTUPU } from "@/lib/texty-vstupu";
 import { jeUkazka, UKAZKOVY_KLIENT } from "@/lib/ukazka";
 
 import { PrihlaseniKlientaForm } from "./prihlaseni-form";
 
-export const metadata: Metadata = { title: "Přihlášení" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: TEXTY_VSTUPU[await nactiJazyk()].prihlaseni };
+}
 
 export const dynamic = "force-dynamic";
 
@@ -20,18 +25,24 @@ export const dynamic = "force-dynamic";
  */
 export default async function PrihlaseniKlientaPage() {
   if (await getKlient()) redirect("/ucet");
+  const jazyk = await nactiJazyk();
+  const t = TEXTY_VSTUPU[jazyk];
 
   return (
-    <Card>
+    <Card lang={jazyk}>
       <CardHeader>
-        <CardTitle>Přihlášení</CardTitle>
-        <CardDescription>
-          Zadejte e-mail, na který vám přišla pozvánka, a své heslo.
-        </CardDescription>
+        <div className="flex items-start justify-between gap-2">
+          <CardTitle>
+            {/* Hlavní nadpis stránky pro čtečky obrazovky (axe, 23. 10. 2026). */}
+            <h1>{t.prihlaseni}</h1>
+          </CardTitle>
+          <PrepinacJazyka jazyk={jazyk} />
+        </div>
+        <CardDescription>{t.klient.popis}</CardDescription>
       </CardHeader>
       <CardContent>
         <Suspense fallback={<Skeleton className="h-64 w-full" />}>
-          <PrihlaseniKlientaForm ukazka={jeUkazka() ? UKAZKOVY_KLIENT : undefined} />
+          <PrihlaseniKlientaForm jazyk={jazyk} ukazka={jeUkazka() ? UKAZKOVY_KLIENT : undefined} />
         </Suspense>
       </CardContent>
     </Card>

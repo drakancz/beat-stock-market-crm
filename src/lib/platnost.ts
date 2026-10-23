@@ -142,30 +142,30 @@ export function spocitejKonec(
  * nepočítají, stejně jako u tržeb.
  */
 export async function prepocitejPlatnost(tx: Transakce, clientId: string): Promise<void> {
-  const [polozky, radky] = await Promise.all([
-    tx.orderItem.findMany({
-      where: {
-        order: { clientId, status: "ZAPLACENO", deletedAt: null, paidAt: { not: null } },
-      },
-      select: {
-        productId: true,
-        quantity: true,
-        validityMonths: true,
-        product: { select: { validityMonths: true } },
-        order: { select: { paidAt: true } },
-      },
-    }),
-    tx.productValidity.findMany({
-      where: { clientId },
-      select: {
-        id: true,
-        productId: true,
-        validUntil: true,
-        manualUntil: true,
-        manualAt: true,
-      },
-    }),
-  ]);
+  // Dotazy v transakci po sobě, ne přes Promise.all: transakce má jedno
+  // spojení a pg souběžné dotazy na něm hlásí (od pg 9 to bude chyba).
+  const polozky = await tx.orderItem.findMany({
+    where: {
+      order: { clientId, status: "ZAPLACENO", deletedAt: null, paidAt: { not: null } },
+    },
+    select: {
+      productId: true,
+      quantity: true,
+      validityMonths: true,
+      product: { select: { validityMonths: true } },
+      order: { select: { paidAt: true } },
+    },
+  });
+  const radky = await tx.productValidity.findMany({
+    where: { clientId },
+    select: {
+      id: true,
+      productId: true,
+      validUntil: true,
+      manualUntil: true,
+      manualAt: true,
+    },
+  });
 
   const platbyPodleProduktu = new Map<string, Platba[]>();
   for (const polozka of polozky) {

@@ -117,14 +117,19 @@ export async function sloucKlienty(
   // Vzdělávání (3C, 4. 10. 2026): hotové lekce, účast na webinářích,
   // odznaky a aktivní týdny. Co už má zůstávající karta, se u sloučené
   // zahodí (dvojice musí být jedinečné), zbytek se přesune.
-  const [lekce, hodnoceni, webinare, odznaky, tydny] = await Promise.all([
-    tx.lessonProgress.findMany({ where: kam, select: { lessonId: true } }),
-    // Hodnocení lekcí (5C, 18. 10. 2026) — u stejné lekce platí zůstávající.
-    tx.lessonRating.findMany({ where: kam, select: { lessonId: true } }),
-    tx.webinarAttendance.findMany({ where: kam, select: { webinarId: true } }),
-    tx.clientBadge.findMany({ where: kam, select: { kind: true, refId: true } }),
-    tx.clientActiveWeek.findMany({ where: kam, select: { week: true } }),
-  ]);
+  // Po sobě, ne přes Promise.all: transakce má jedno spojení (viz platnost.ts).
+  const lekce = await tx.lessonProgress.findMany({ where: kam, select: { lessonId: true } });
+  // Hodnocení lekcí (5C, 18. 10. 2026) — u stejné lekce platí zůstávající.
+  const hodnoceni = await tx.lessonRating.findMany({ where: kam, select: { lessonId: true } });
+  const webinare = await tx.webinarAttendance.findMany({
+    where: kam,
+    select: { webinarId: true },
+  });
+  const odznaky = await tx.clientBadge.findMany({
+    where: kam,
+    select: { kind: true, refId: true },
+  });
+  const tydny = await tx.clientActiveWeek.findMany({ where: kam, select: { week: true } });
   await tx.lessonProgress.deleteMany({
     where: { ...odkud, lessonId: { in: lekce.map((l) => l.lessonId) } },
   });

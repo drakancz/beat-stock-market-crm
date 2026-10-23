@@ -10,7 +10,9 @@ export default function ZapomenuteHesloKlientaPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Zapomenuté heslo</CardTitle>
+        <CardTitle>
+          <h1>Zapomenuté heslo</h1>
+        </CardTitle>
         <CardDescription>
           Zadejte e-mail, kterým se přihlašujete, a pošleme vám odkaz na nové heslo.
         </CardDescription>

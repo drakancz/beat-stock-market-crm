@@ -9,7 +9,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { chybaKlientaCesky } from "@/lib/klient/hlasky";
+import type { Jazyk } from "@/lib/jazyk";
+import { chybaPrihlaseni, TEXTY_VSTUPU } from "@/lib/texty-vstupu";
 
 import { prihlasitKlienta } from "./actions";
 
@@ -18,7 +19,15 @@ import { prihlasitKlienta } from "./actions";
  * e-mail a heslo, a když má účet dvoufázové ověření, doptá se na kód.
  * Že účet kód má, se dozví jen ten, kdo zná heslo.
  */
-export function PrihlaseniKlientaForm({ ukazka }: { ukazka?: { email: string; heslo: string } }) {
+export function PrihlaseniKlientaForm({
+  jazyk,
+  ukazka,
+}: {
+  jazyk: Jazyk;
+  ukazka?: { email: string; heslo: string };
+}) {
+  const f = TEXTY_VSTUPU[jazyk].formular;
+  const t = TEXTY_VSTUPU[jazyk].klient;
   const router = useRouter();
   const parametry = useSearchParams();
   // Po změně hesla v profilu — jen věta podle pevné hodnoty, nic z adresy se nevypisuje.
@@ -58,7 +67,7 @@ export function PrihlaseniKlientaForm({ ukazka }: { ukazka?: { email: string; he
       setKodPotreba(true);
       return;
     }
-    setChyba(chybaKlientaCesky(vysledek.kod));
+    setChyba(chybaPrihlaseni(jazyk, "klient", vysledek.kod));
   }
 
   // `method="post"`: kdyby obsluha neproběhla, heslo nesmí skončit v adrese.
@@ -70,14 +79,13 @@ export function PrihlaseniKlientaForm({ ukazka }: { ukazka?: { email: string; he
           <div className="flex items-start gap-2 text-sm">
             <FlaskConical className="mt-0.5 size-4 shrink-0" aria-hidden />
             <p>
-              <strong>Ukázka pro zájemce.</strong> Takhle vypadá aplikace pro klienty — kurzy,
-              objednávky, členství. Data jsou vymyšlená a každou noc se obnoví.
+              <strong>{f.ukazkaNadpis}</strong> {t.ukazka}
             </p>
           </div>
           <dl className="text-muted-foreground grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-            <dt>E-mail</dt>
+            <dt>{f.email}</dt>
             <dd className="text-foreground font-mono break-all">{ukazka.email}</dd>
-            <dt>Heslo</dt>
+            <dt>{f.heslo}</dt>
             <dd className="text-foreground font-mono break-all">{ukazka.heslo}</dd>
           </dl>
           <div className="flex flex-col gap-2">
@@ -87,10 +95,10 @@ export function PrihlaseniKlientaForm({ ukazka }: { ukazka?: { email: string; he
               disabled={odesila}
               onClick={() => prihlasitUkazku(ukazka)}
             >
-              Vyzkoušet jako klient
+              {f.jakoKlient}
             </Button>
             <Button asChild variant="outline" className="w-full">
-              <Link href="/prihlaseni">Vyzkoušet jako člen týmu</Link>
+              <Link href="/prihlaseni">{f.jakoTym}</Link>
             </Button>
           </div>
         </div>
@@ -105,23 +113,19 @@ export function PrihlaseniKlientaForm({ ukazka }: { ukazka?: { email: string; he
       {hesloZmeneno && !chyba && !kodPotreba && (
         <Alert>
           <ShieldCheck />
-          <AlertDescription>
-            Heslo je změněné a všechna zařízení jsou odhlášená. Přihlaste se novým heslem.
-          </AlertDescription>
+          <AlertDescription>{t.hesloZmeneno}</AlertDescription>
         </Alert>
       )}
 
       {kodPotreba && (
         <Alert>
           <ShieldCheck />
-          <AlertDescription>
-            Heslo sedí. Ještě opište kód z ověřovací aplikace v telefonu.
-          </AlertDescription>
+          <AlertDescription>{t.kodPotreba}</AlertDescription>
         </Alert>
       )}
 
       <div className="space-y-2">
-        <Label htmlFor="email">E-mail</Label>
+        <Label htmlFor="email">{f.email}</Label>
         <Input
           id="email"
           name="email"
@@ -130,18 +134,18 @@ export function PrihlaseniKlientaForm({ ukazka }: { ukazka?: { email: string; he
           required
           autoFocus={!kodPotreba}
           readOnly={kodPotreba}
-          placeholder="vas@email.cz"
+          placeholder={t.vychoziEmail}
         />
       </div>
 
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <Label htmlFor="heslo">Heslo</Label>
+          <Label htmlFor="heslo">{f.heslo}</Label>
           <Link
             href="/ucet/zapomenute-heslo"
             className="text-muted-foreground hover:text-foreground -my-1.5 py-1.5 text-xs underline underline-offset-4"
           >
-            Zapomenuté heslo
+            {f.zapomenute}
           </Link>
         </div>
         <Input
@@ -156,7 +160,7 @@ export function PrihlaseniKlientaForm({ ukazka }: { ukazka?: { email: string; he
 
       {kodPotreba && (
         <div className="space-y-2">
-          <Label htmlFor="kod">{zalozni ? "Záložní kód" : "Kód z aplikace"}</Label>
+          <Label htmlFor="kod">{zalozni ? f.zalozniKod : f.kodZAplikace}</Label>
           <Input
             id="kod"
             name="kod"
@@ -164,7 +168,7 @@ export function PrihlaseniKlientaForm({ ukazka }: { ukazka?: { email: string; he
             autoComplete="one-time-code"
             required
             autoFocus
-            placeholder={zalozni ? "např. a1b2c3d4e5" : "123456"}
+            placeholder={zalozni ? f.prikladZalozniho : "123456"}
             className={zalozni ? undefined : "text-center font-mono text-lg tracking-[0.4em]"}
           />
         </div>
@@ -172,7 +176,7 @@ export function PrihlaseniKlientaForm({ ukazka }: { ukazka?: { email: string; he
 
       <Button type="submit" className="w-full" disabled={odesila}>
         {odesila && <Loader2 className="animate-spin" />}
-        {kodPotreba ? "Ověřit a přihlásit" : "Přihlásit se"}
+        {kodPotreba ? f.overitAPrihlasit : f.prihlasitSe}
       </Button>
 
       {kodPotreba && (
@@ -184,7 +188,7 @@ export function PrihlaseniKlientaForm({ ukazka }: { ukazka?: { email: string; he
           }}
           className="text-muted-foreground hover:text-foreground w-full text-center text-xs underline underline-offset-4"
         >
-          {zalozni ? "Zpět na kód z aplikace" : "Nemám telefon — použít záložní kód"}
+          {zalozni ? f.zpetNaKod : f.bezTelefonu}
         </button>
       )}
     </form>

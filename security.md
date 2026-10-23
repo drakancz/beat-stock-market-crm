@@ -414,7 +414,8 @@ na takovém serveru jsou vymyšlená a každou noc se vrátí do výchozího sta
   nic neotevře; `jeUkazkovyTym()` / `jeUkazkovyKlient()` jsou bez režimu
   vždy `false`.
 - **Nic neodchází ven:** e-maily, SmartEmailing, webhooky, Google
-  Kalendář, oznámení, Asistent AI a nahrávání příloh jsou vypnuté na
+  Kalendář, oznámení, Asistent AI, platební brána GoPay a nahrávání
+  příloh jsou vypnuté na
   nejnižším místě (kde se volá služba), ne skrytím tlačítka.
 - **Ukázkové účty nezmění** heslo, e-mail, dvoufázové ověření ani
   povinné dvoufázové ověření, nevytvoří klíč MCP a člen týmu **nevidí

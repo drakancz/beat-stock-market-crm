@@ -85,7 +85,7 @@ export function UdajeKlienta({
 
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">Zasílání novinek e-mailem</legend>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex min-h-6 items-center gap-2 text-sm">
               <input
                 type="radio"
                 name="souhlas"
@@ -95,7 +95,7 @@ export function UdajeKlienta({
               />
               Souhlasím
             </label>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex min-h-6 items-center gap-2 text-sm">
               <input type="radio" name="souhlas" value="ne" defaultChecked={!udaje.souhlas} />
               Nesouhlasím
             </label>

@@ -131,7 +131,7 @@ test.describe("kvíz a certifikát v klientské části", () => {
       await prihlasKlienta(page, klient.email, klient.heslo);
 
       await page.goto(`/ucet/kurzy/${kurzId}`);
-      await expect(page.getByText(/Certifikát dostanete/)).toContainText("Zbývá 2 lekce.");
+      await expect(page.getByText(/Certifikát dostanete/)).toContainText("Zbývají 2 lekce.");
       await expect(page.getByText(/Certifikát dostanete/)).toContainText(
         "Nesplněné kvízy u lekcí: Lekce dvě.",
       );

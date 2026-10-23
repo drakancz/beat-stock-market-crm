@@ -12,7 +12,9 @@ export default function NoveHesloKlientaPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Nastavení hesla</CardTitle>
+        <CardTitle>
+          <h1>Nastavení hesla</h1>
+        </CardTitle>
         <CardDescription>Heslo zadáváte jen vy. Nikdo jiný ho neuvidí, ani my.</CardDescription>
       </CardHeader>
       <CardContent>

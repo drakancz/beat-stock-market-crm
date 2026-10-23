@@ -365,7 +365,7 @@ export default async function UcetPage() {
                 <li key={objednavka.id} className="space-y-1.5 py-3 first:pt-0 last:pb-0">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <span className="tabular min-w-0 flex-1 font-medium">
-                      Objednávka {objednavka.number}
+                      Objednávka <span className="whitespace-nowrap">{objednavka.number}</span>
                     </span>
                     <Badge variant={objednavka.status === "ZAPLACENO" ? "default" : "outline"}>
                       {ORDER_STATUS_LABEL[objednavka.status]}
@@ -400,7 +400,7 @@ export default async function UcetPage() {
                         <a
                           key={doklad.id}
                           href={`/ucet/faktura/${doklad.id}`}
-                          className="text-primary inline-flex items-center gap-1 font-medium underline-offset-4 hover:underline"
+                          className="text-primary inline-flex min-h-6 items-center gap-1 font-medium underline-offset-4 hover:underline"
                         >
                           <Download className="size-3" aria-hidden />
                           {doklad.dobropis ? "Dobropis" : "Faktura"} {doklad.number}

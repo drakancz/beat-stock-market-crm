@@ -70,7 +70,7 @@ export default async function KurzyKlientaPage() {
                   {kurz.productId && (
                     <Link
                       href={`/ucet/koupit?produkt=${kurz.productId}`}
-                      className="text-primary font-medium underline-offset-4 hover:underline"
+                      className="text-primary inline-flex min-h-6 items-center font-medium underline-offset-4 hover:underline"
                     >
                       Koupit
                     </Link>
@@ -80,7 +80,7 @@ export default async function KurzyKlientaPage() {
                       href={kurz.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-primary inline-flex items-center gap-1 underline-offset-4 hover:underline"
+                      className="text-primary inline-flex min-h-6 items-center gap-1 underline-offset-4 hover:underline"
                     >
                       Více o kurzu
                       <ExternalLink className="size-3.5" aria-hidden />
