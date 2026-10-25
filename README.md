@@ -249,12 +249,12 @@ automatických testů (570 běhů ve třech prohlížečích).
 
 ## Autor
 
-**Ing. Jakub Košťan, LL.M., MBA, MSc.** — <jakubkostan@gmail.com> · [LinkedIn](https://www.linkedin.com/in/ing-jakub-ko%C5%A1%C5%A5an-ll-m-mba-msc-a37a88258/) · [GitHub](https://github.com/drakancz)
+**Ing. Jakub Košťan** — <jakubkostan@gmail.com> · [LinkedIn](https://www.linkedin.com/in/jakubkostan/) · [GitHub](https://github.com/drakancz)
 
 Beat Stock Market je můj projekt; kód zveřejňuji jako jeho vlastník.
 Data v ukázce jsou vymyšlená.
 
 ## Licence
 
-© 2026 Ing. Jakub Košťan, LL.M., MBA, MSc. **Všechna práva vyhrazena.** Kód je zveřejněný
+© 2026 Ing. Jakub Košťan. **Všechna práva vyhrazena.** Kód je zveřejněný
 jako ukázka práce — smí se číst a posuzovat, ne kopírovat ani používat.
