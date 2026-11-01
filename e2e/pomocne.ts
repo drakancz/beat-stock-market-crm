@@ -145,7 +145,7 @@ export function jeMobil(page: Page): boolean {
  */
 export async function menu(page: Page) {
   if (jeMobil(page)) {
-    await page.getByRole("button", { name: "Toggle Sidebar" }).click();
+    await page.getByRole("button", { name: "Zobrazit nebo skrýt menu" }).click();
     const panel = page.locator('[data-slot="sidebar"][data-mobile="true"]');
     await expect(panel).toBeVisible();
     return panel;

@@ -40,7 +40,9 @@ export function AppSidebar({ viewer }: { viewer: Viewer }) {
   const { setOpenMobile } = useSidebar();
 
   return (
-    <Sidebar collapsible="icon">
+    // Celý panel je pro čtečku obrazovky oblast „Hlavní menu“ — bez ní
+    // menu nepatřilo do žádné oblasti stránky (axe, 24. 10. 2026).
+    <Sidebar collapsible="icon" role="navigation" aria-label="Hlavní menu">
       <SidebarHeader className="h-16 justify-center px-3">
         <Link
           href="/dashboard"

@@ -1,4 +1,5 @@
 import { LogoLockup } from "@/components/brand/logo";
+import { ZpetNaLandingPage } from "@/components/zpet-na-landing-page";
 import { nactiJazyk } from "@/lib/jazyk-server";
 import { TEXTY_VSTUPU } from "@/lib/texty-vstupu";
 
@@ -18,11 +19,11 @@ export default async function AuthLayout({ children }: LayoutProps<"/">) {
         <LogoLockup subtitle={t.podtitul} />
       </header>
       <main className="w-full max-w-sm">{children}</main>
-      <footer
-        lang={jazyk}
-        className="text-muted-foreground max-w-sm text-center text-xs text-balance"
-      >
-        {t.paticka}
+      <footer lang={jazyk} className="flex flex-col items-center gap-6">
+        <p className="text-muted-foreground max-w-sm text-center text-xs text-balance">
+          {t.paticka}
+        </p>
+        <ZpetNaLandingPage jazyk={jazyk} />
       </footer>
     </div>
   );

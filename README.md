@@ -4,6 +4,8 @@
 Objednávky chodí z webu, tým je vyřizuje v CRM a klienti mají vlastní
 aplikaci v telefonu s kurzy, členskou sekcí a oznámeními.
 
+**Vyzkoušejte si to:** [živá ukázka CRM](https://crm-beatstockmarket-dev.up.railway.app/prihlaseni) · [Landing Page napojená na CRM](https://landing-page.jakubkostan.workers.dev/) · [její kód](https://github.com/drakancz/beat-stock-market-landing-page)
+
 Next.js 16 · React 19 · TypeScript · PostgreSQL · Prisma · Playwright · Docker
 
 | CRM pro tým                                     | Klientská aplikace na telefonu                    |
@@ -92,6 +94,8 @@ Next.js 16 · React 19 · TypeScript · PostgreSQL · Prisma · Playwright · Do
   mají přepínač Česky / English (volba se pamatuje v cookie), aby si
   ukázku prošel i zahraniční návštěvník; samotná aplikace zůstává česká
   a průvodce u každého kroku řekne, na co se dívat.
+- **Úvodní konzultace zdarma z Landing Page** — v ukázce si návštěvník vybere
+  volný termín, v CRM vznikne klient z webu a rezervace bez platby.
 
 **Pro klienty**
 
@@ -123,7 +127,7 @@ Next.js 16 · React 19 · TypeScript · PostgreSQL · Prisma · Playwright · Do
 | Přihlášení | Auth.js 5, bcrypt, TOTP, podepsané cookie pro klienty         |
 | Validace   | Zod 4 na každém vstupu ze serveru                             |
 | Služby     | Amazon SES, Web Push, S3 / Cloudflare R2, Sentry              |
-| Testy      | Playwright — 320+ testů v Chrome, Android a iPhone Safari     |
+| Testy      | Playwright — 370+ testů v Chrome, Android a iPhone Safari     |
 | CI         | GitHub Actions — celá sada u každého PR, produkční sestavení  |
 | Provoz     | Docker, Railway, plánovaná služba (cron)                      |
 
@@ -244,8 +248,8 @@ otestovaná a udržovatelná.**
 - **Do produkce jen přes pull request** se zelenými testy z GitHub
   Actions a po každém nasazení kontrola logů a stavu serveru.
 
-**V číslech:** 310+ commitů za srpen–říjen 2026, 7 fází, 320+
-automatických testů (570 běhů ve třech prohlížečích).
+**V číslech:** 300+ commitů za srpen–listopad 2026, 7 fází, 370+
+automatických testů (660+ běhů ve třech prohlížečích).
 
 ## Autor
 

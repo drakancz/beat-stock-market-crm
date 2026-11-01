@@ -9,7 +9,7 @@ import { nactiNastaveni } from "@/lib/nastaveni";
  */
 
 /** Den, od kterého texty platí. Při změně textu ho posuň. */
-export const PLATNE_OD = "20. 10. 2026";
+export const PLATNE_OD = "1. 11. 2026";
 
 export async function udajeFirmy() {
   const nastaveni = await nactiNastaveni();

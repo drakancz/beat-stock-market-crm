@@ -10,7 +10,10 @@ export default function ZapomenuteHesloPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Zapomenuté heslo</CardTitle>
+        {/* Hlavní nadpis stránky pro čtečky obrazovky (axe, 24. 10. 2026). */}
+        <CardTitle>
+          <h1>Zapomenuté heslo</h1>
+        </CardTitle>
         <CardDescription>
           Zadej svůj pracovní e-mail a pošleme ti odkaz, kterým si nastavíš nové heslo.
         </CardDescription>

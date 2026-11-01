@@ -224,7 +224,10 @@ services:
       AWS_SES_SECRET_ACCESS_KEY: ""
       AWS_SES_REGION: ""
       AWS_SES_CONFIGURATION_SET: ""
-      LEAD_API_KEY: ""
+      # Příjem klientů z webu se zkouší (ukázková lekce, 27. 10. 2026) —
+      # stejně jako u objednávek je to heslo, kterým se prokazuje volající
+      # nám. Stejnou hodnotu čte `e2e/leady.spec.ts`.
+      LEAD_API_KEY: "e2e-leady-klic-nepouzivat-nikde-jinde-00001"
       # Příjem objednávek z Landing Page se v testech **zkouší**, proto tu
       # klíč prázdný není. Není to klíč ke službě mimo počítač, ale heslo,
       # kterým se cizí systém prokazuje nám — nic tedy nikam neodchází.
@@ -240,6 +243,9 @@ services:
       PLANOVAC_KEY: "e2e-planovac-klic-nepouzivat-nikde-jinde-0001"
       # Ranní úlohy plánovače i v noci — testy běží kdykoli.
       PLANOVAC_RANNI_HODINA: "0"
+      # Odkaz zpět na Landing Page v ukázce (krok 1C) — jen adresa odkazu,
+      # nic se na ni nevolá. Čte `e2e-ukazka/ukazka.spec.ts`.
+      LANDING_PAGE_ADRESA: "https://landing.example"
       SMARTEMAILING_USERNAME: ""
       SMARTEMAILING_API_KEY: ""
       SMARTEMAILING_WEBHOOK_SECRET: ""

@@ -48,6 +48,29 @@ export const UKAZKOVA_FIRMA = {
   emailSenderName: "Beat Stock Market (ukázka)",
 } as const;
 
+/**
+ * Členství a konzultace podle ceníku ostrého CRM (26. 10. 2026), ceny bez
+ * DPH — s 21 % vychází 299, 2 904, 12 100 a 1 210 Kč jako na Landing Page.
+ * Členství má platnost, bez ní by klientská část neměla Klub.
+ */
+const CENIK_UKAZKY = [
+  {
+    name: "BSM - Měsíční členství",
+    kind: "CLENSTVI" as const,
+    netPrice: 247.11,
+    validityMonths: 1,
+  },
+  { name: "BSM - Roční členství", kind: "CLENSTVI" as const, netPrice: 2400, validityMonths: 12 },
+  {
+    name: "BSM (VIP) - Roční členství",
+    kind: "CLENSTVI" as const,
+    netPrice: 10000,
+    validityMonths: 12,
+  },
+  { name: "Konzultace - Analýza akciového portfólia", kind: "KONZULTACE" as const, netPrice: 1000 },
+  { name: "Konzultace - Investiční strategie", kind: "KONZULTACE" as const, netPrice: 1000 },
+];
+
 /** Řádky, které jinak zakládají migrace — po vyčištění tabulek chybí. */
 async function radkyZMigraci() {
   await db.vatRate.createMany({
@@ -137,11 +160,11 @@ const KLIENTI: NovyKlient[] = [
     poznamka: "Ukázkový klient — přes tenhle účet se návštěvníci dívají do klientské části.",
     objednavky: [
       { produkty: ["Kurz Základy investování"], stav: "ZAPLACENO", predDny: 65 },
-      { produkty: ["Členství Klub BSM — rok"], stav: "ZAPLACENO", predDny: 40 },
+      { produkty: ["BSM - Roční členství"], stav: "ZAPLACENO", predDny: 40 },
       // Dvě konzultace: jedna už má termín, druhou si návštěvník vybere sám
       // (krok průvodce „Rezervace konzultace“).
-      { produkty: ["Konzultace 1:1 (60 min)"], stav: "ZAPLACENO", predDny: 25 },
-      { produkty: ["Konzultace 1:1 (60 min)"], stav: "ZAPLACENO", predDny: 6 },
+      { produkty: ["Konzultace - Investiční strategie"], stav: "ZAPLACENO", predDny: 25 },
+      { produkty: ["Konzultace - Investiční strategie"], stav: "ZAPLACENO", predDny: 6 },
       { produkty: ["Kurz Technická analýza"], stav: "NEZAPLACENO", predDny: 2 },
     ],
   },
@@ -157,7 +180,7 @@ const KLIENTI: NovyKlient[] = [
     poznamka: "Chce si projít technickou analýzu před koncem roku.",
     objednavky: [
       {
-        produkty: ["Členství Klub BSM — rok", "Konzultace 1:1 (60 min)"],
+        produkty: ["BSM (VIP) - Roční členství"],
         stav: "ZAPLACENO",
         predDny: 85,
       },
@@ -184,7 +207,7 @@ const KLIENTI: NovyKlient[] = [
     predDny: 12,
     stitky: ["Splátky"],
     poznamka: "Ptal se na rozložení platby, poslali jsme podmínky.",
-    objednavky: [{ produkty: ["Členství Klub BSM — rok"], stav: "NEZAPLACENO", predDny: 11 }],
+    objednavky: [{ produkty: ["BSM - Roční členství"], stav: "NEZAPLACENO", predDny: 11 }],
   },
   {
     name: "Jana Procházková",
@@ -196,8 +219,8 @@ const KLIENTI: NovyKlient[] = [
     predDny: 80,
     stitky: ["Klub"],
     objednavky: [
-      { produkty: ["Členství Klub BSM — rok"], stav: "ZAPLACENO", predDny: 78 },
-      { produkty: ["Konzultace 1:1 (60 min)"], stav: "ZAPLACENO", predDny: 20 },
+      { produkty: ["BSM - Roční členství"], stav: "ZAPLACENO", predDny: 78 },
+      { produkty: ["Konzultace - Investiční strategie"], stav: "ZAPLACENO", predDny: 20 },
     ],
   },
   {
@@ -231,7 +254,7 @@ const KLIENTI: NovyKlient[] = [
     poznamka: "Členství mu brzy končí, zatím neodpověděl.",
     objednavky: [
       // Roční členství končí asi za dva týdny — sedí k poznámce i úkolu.
-      { produkty: ["Členství Klub BSM — rok"], stav: "ZAPLACENO", predDny: 353 },
+      { produkty: ["BSM - Roční členství"], stav: "ZAPLACENO", predDny: 353 },
       { produkty: ["Kurz Technická analýza"], stav: "ZAPLACENO", predDny: 87 },
     ],
   },
@@ -260,7 +283,9 @@ const KLIENTI: NovyKlient[] = [
     stage: "MA_ZAJEM",
     souhlas: true,
     predDny: 16,
-    objednavky: [{ produkty: ["Konzultace 1:1 (60 min)"], stav: "NEZAPLACENO", predDny: 9 }],
+    objednavky: [
+      { produkty: ["Konzultace - Investiční strategie"], stav: "NEZAPLACENO", predDny: 9 },
+    ],
   },
   {
     name: "Simona Králová",
@@ -272,7 +297,7 @@ const KLIENTI: NovyKlient[] = [
     predDny: 58,
     stitky: ["Klub", "VIP"],
     objednavky: [
-      { produkty: ["Členství Klub BSM — rok"], stav: "ZAPLACENO", predDny: 57 },
+      { produkty: ["BSM - Roční členství"], stav: "ZAPLACENO", predDny: 57 },
       { produkty: ["Kurz Základy investování"], stav: "ZAPLACENO", predDny: 15 },
     ],
   },
@@ -298,9 +323,9 @@ const KLIENTI: NovyKlient[] = [
     predDny: 395,
     stitky: ["Klub"],
     objednavky: [
-      { produkty: ["Členství Klub BSM — rok"], stav: "ZAPLACENO", predDny: 382 },
+      { produkty: ["BSM - Roční členství"], stav: "ZAPLACENO", predDny: 382 },
       // Prodloužil ještě před koncem.
-      { produkty: ["Členství Klub BSM — rok"], stav: "ZAPLACENO", predDny: 20 },
+      { produkty: ["BSM - Roční členství"], stav: "ZAPLACENO", predDny: 20 },
     ],
   },
   {
@@ -313,9 +338,9 @@ const KLIENTI: NovyKlient[] = [
     predDny: 380,
     stitky: ["Klub"],
     objednavky: [
-      { produkty: ["Členství Klub BSM — rok"], stav: "ZAPLACENO", predDny: 372 },
+      { produkty: ["BSM - Roční členství"], stav: "ZAPLACENO", predDny: 372 },
       // Zaplatila pár dní po konci — ve lhůtě, počítá se jako prodloužení.
-      { produkty: ["Členství Klub BSM — rok"], stav: "ZAPLACENO", predDny: 4 },
+      { produkty: ["BSM - Roční členství"], stav: "ZAPLACENO", predDny: 4 },
     ],
   },
   {
@@ -327,7 +352,7 @@ const KLIENTI: NovyKlient[] = [
     souhlas: true,
     predDny: 400,
     poznamka: "Členství neprodloužil, prý se vrátí po novém roce.",
-    objednavky: [{ produkty: ["Členství Klub BSM — rok"], stav: "ZAPLACENO", predDny: 390 }],
+    objednavky: [{ produkty: ["BSM - Roční členství"], stav: "ZAPLACENO", predDny: 390 }],
   },
   {
     name: "Hana Marková",
@@ -337,7 +362,7 @@ const KLIENTI: NovyKlient[] = [
     stage: "MA_UCET",
     souhlas: true,
     predDny: 375,
-    objednavky: [{ produkty: ["Členství Klub BSM — rok"], stav: "ZAPLACENO", predDny: 371 }],
+    objednavky: [{ produkty: ["BSM - Roční členství"], stav: "ZAPLACENO", predDny: 371 }],
   },
   {
     name: "Veronika Šťastná",
@@ -348,7 +373,7 @@ const KLIENTI: NovyKlient[] = [
     souhlas: true,
     predDny: 14,
     stitky: ["Klub"],
-    objednavky: [{ produkty: ["Členství Klub BSM — rok"], stav: "ZAPLACENO", predDny: 10 }],
+    objednavky: [{ produkty: ["BSM - Měsíční členství"], stav: "ZAPLACENO", predDny: 10 }],
   },
   {
     name: "Lukáš Holub",
@@ -359,7 +384,7 @@ const KLIENTI: NovyKlient[] = [
     souhlas: false,
     predDny: 25,
     stitky: ["Klub"],
-    objednavky: [{ produkty: ["Členství Klub BSM — rok"], stav: "ZAPLACENO", predDny: 22 }],
+    objednavky: [{ produkty: ["BSM - Roční členství"], stav: "ZAPLACENO", predDny: 22 }],
   },
 ];
 
@@ -376,9 +401,21 @@ export async function naplnUkazku() {
   const zaklad = await naplnZakladniData(db);
   const tym = await ukazkovyClenTymu();
 
-  // Členství má roční platnost — bez ní by klientská část neměla Klub.
-  const clenstvi = zaklad.idProduktu("Členství Klub BSM — rok");
-  if (clenstvi) await db.product.update({ where: { id: clenstvi }, data: { validityMonths: 12 } });
+  // Ceník ukázky = ceník ostrého CRM (Jakub, 26. 10. 2026) — Landing Page
+  // ho načítá a musí sedět s návrhem stránky. Členství ze základních dat
+  // (na něm stojí testy) se v ukázce přestane prodávat, jeho objednávky
+  // ze seedu zůstanou jako starší nákupy.
+  await db.product.createMany({
+    data: CENIK_UKAZKY.map((produkt) => ({
+      ...produkt,
+      vatRateId: "zakladni",
+      currency: "CZK",
+    })),
+  });
+  await db.product.updateMany({
+    where: { name: { in: ["Členství Klub BSM — rok", "Konzultace 1:1 (60 min)"] } },
+    data: { active: false },
+  });
 
   const produkty = new Map(
     (await db.product.findMany({ select: { id: true, name: true, netPrice: true } })).map((p) => [
@@ -622,12 +659,27 @@ export async function naplnUkazku() {
   }
 
   // --- Konzultace: volné termíny a jedna rezervace Evy --------------------
+  // Víc termínů na dva týdny — úvodní konzultaci zdarma si z Landing Page
+  // (6H) bere každý návštěvník, a obnova je jen jednou za noc.
   const terminy = [];
-  for (const dni of [2, 5, 9, 12]) {
+  for (const [dni, hodina] of [
+    [2, 15],
+    [5, 15],
+    [9, 15],
+    [12, 15],
+    [1, 10],
+    [3, 10],
+    [4, 15],
+    [6, 10],
+    [8, 10],
+    [10, 15],
+    [11, 10],
+    [13, 10],
+  ] as const) {
     terminy.push(
       await db.consultationSlot.create({
         data: {
-          startsAt: den(dni, 15),
+          startsAt: den(dni, hodina),
           durationMinutes: 60,
           place: "Online",
           joinUrl: "https://example.test/konzultace",

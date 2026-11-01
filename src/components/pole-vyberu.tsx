@@ -98,6 +98,7 @@ export function PoleVyberu({
         <PopoverContent
           className="pointer-events-auto w-(--radix-popover-trigger-width) p-0"
           align="start"
+          aria-label={popisekTlacitka}
         >
           {/*
             Hledá se bez ohledu na diakritiku (Jakub, 25. 9. 2026):

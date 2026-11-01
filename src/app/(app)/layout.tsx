@@ -30,6 +30,14 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
 
   return (
     <SidebarProvider>
+      {/* Kdo ovládá klávesnicí, nemusí na každé obrazovce projít celé menu
+          (WCAG 2.4.1; 24. 10. 2026). Vidět je jen po stisku Tab. */}
+      <a
+        href="#obsah"
+        className="bg-background text-foreground ring-ring sr-only z-50 rounded-md px-4 py-2 text-sm font-medium shadow-md focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:ring-2"
+      >
+        Přeskočit na obsah
+      </a>
       <ZaznamObrazovek />
       {/* K chybě v prohlížeči se připojí jen ID a role — viz komponenta. */}
       <SentryUzivatel id={viewer.id} role={viewer.role} />
@@ -37,7 +45,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       <SidebarInset className="min-w-0">
         <PruhUkazky />
         <AppTopbar role={viewer.role} pripominky={pripominky} />
-        <div className="flex-1 px-3 py-5 sm:px-5 sm:py-6">
+        <div id="obsah" tabIndex={-1} className="flex-1 px-3 py-5 outline-none sm:px-5 sm:py-6">
           <div className="mx-auto w-full max-w-[1400px] space-y-6">{children}</div>
         </div>
         {/* Průvodce „Co si vyzkoušet“ jen pro ukázkový účet (Jakub, 22. 10. 2026). */}

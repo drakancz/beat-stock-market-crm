@@ -8,7 +8,7 @@ import { getKlient } from "@/lib/klient/sezeni";
 import { nactiNastaveni } from "@/lib/nastaveni";
 import { ORDER_STATUS_LABEL, PRODUCT_KIND_LABEL, PROGRAM_ACCESS_LABEL } from "@/lib/types";
 import { vytvorPocitadlo } from "@/lib/verejne-api";
-import { POPIS_ODZNAKU } from "@/lib/vzdelavani/odznaky";
+import { POPIS_ODZNAKU, popisTydne } from "@/lib/vzdelavani/odznaky";
 
 /**
  * „Moje údaje ke stažení“ v klientské části (Jakub, 21. 10. 2026) —
@@ -298,7 +298,7 @@ export async function nactiMojeUdaje(
     {
       nazev: "Aktivní týdny",
       jeden: false,
-      zaznamy: klient.aktivniTydny.map((t) => ({ Týden: t.week })),
+      zaznamy: klient.aktivniTydny.map((t) => ({ Týden: popisTydne(t.week) })),
     },
     {
       nazev: "Účast na webinářích",

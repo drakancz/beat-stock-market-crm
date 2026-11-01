@@ -24,7 +24,7 @@ test.describe("přepínač vzhledu", () => {
 
     const panel = page.locator('[data-slot="sidebar"][data-mobile="true"]');
     if (!(await panel.isVisible())) {
-      await page.getByRole("button", { name: "Toggle Sidebar" }).click();
+      await page.getByRole("button", { name: "Zobrazit nebo skrýt menu" }).click();
       await expect(panel).toBeVisible();
     }
     return panel;

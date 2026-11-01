@@ -82,7 +82,11 @@ export function StitkyKlienta({
               Přidat štítek
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="start" className="w-auto max-w-72">
+          <PopoverContent
+            align="start"
+            className="w-auto max-w-72"
+            aria-label="Přidat štítek ke klientovi"
+          >
             <ul className="flex flex-wrap gap-1.5" aria-label="Nabídka štítků">
               {nemaji.map((stitek) => (
                 <li key={stitek.id}>

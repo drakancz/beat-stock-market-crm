@@ -113,17 +113,18 @@ test.describe("Ukázka — člen týmu", () => {
       const pruvodce = page.getByRole("region", { name: "Co si tu vyzkoušet" });
       await expect(pruvodce).toBeVisible();
       // Stránka, na které se průvodce načetl, se odškrtne sama.
-      await expect(pruvodce.getByText("Prošli jste 1 z 5")).toBeVisible();
+      await expect(pruvodce.getByText("Prošli jste 1 z 6")).toBeVisible();
       await bezVodorovnehoPosuvu(page);
 
       // Karta klienta (druhý krok) se odškrtne až otevřením karty, ne
-      // seznamem. Na počet se čeká po každé stránce — jinak by `goto()`
-      // odešel dřív, než se průvodce na pomalejším telefonu načte.
-      const ocekavanyPocet = [1, 1, 2, 3, 4];
+      // seznamem; filtr „Nové“ (krok Landing Page) odškrtne i Objednávky.
+      // Na počet se čeká po každé stránce — jinak by `goto()` odešel dřív,
+      // než se průvodce na pomalejším telefonu načte.
+      const ocekavanyPocet = [1, 1, 3, 3, 4, 5];
       for (const [i, krok] of KROKY_PRUVODCE.tym.entries()) {
         const odpoved = await page.goto(krok.href);
         expect(odpoved?.status(), `${krok.href} má existovat`).toBe(200);
-        await expect(pruvodce.getByText(`Prošli jste ${ocekavanyPocet[i]} z 5`)).toBeVisible();
+        await expect(pruvodce.getByText(`Prošli jste ${ocekavanyPocet[i]} z 6`)).toBeVisible();
       }
 
       await pruvodce.getByRole("link", { name: "Karta klienta" }).click();
@@ -132,7 +133,7 @@ test.describe("Ukázka — člen týmu", () => {
       // Na telefonu se panel po kliknutí na krok sbalí, ať nezakrývá stránku.
       const tlacitko = page.getByRole("button", { name: /Co si vyzkoušet/ });
       if (testInfo.project.name !== "desktop") await tlacitko.click();
-      await expect(pruvodce.getByText("Prošli jste 5 z 5")).toBeVisible();
+      await expect(pruvodce.getByText("Prošli jste 6 z 6")).toBeVisible();
 
       // Sbalený zůstane i po načtení jiné stránky.
       await pruvodce.getByRole("button", { name: "Sbalit průvodce" }).click();
@@ -140,9 +141,63 @@ test.describe("Ukázka — člen týmu", () => {
       await expect(pruvodce).toHaveCount(0);
       await page.getByRole("button", { name: /Co si vyzkoušet/ }).click();
       await pruvodce.getByRole("button", { name: "Začít znovu" }).click();
-      await expect(pruvodce.getByText("Prošli jste 0 z 5")).toBeVisible();
+      await expect(pruvodce.getByText("Prošli jste 0 z 6")).toBeVisible();
     },
   );
+
+  test("objednávka z Landing Page: přihlášení otevře rovnou ji", async ({ page, request }) => {
+    // Stejný klíč jako `ORDER_API_KEY` služby `e2e` v `compose.yaml`.
+    const odpoved = await request.post("/api/objednavky", {
+      headers: { "X-API-Key": "e2e-objednavky-klic-nepouzivat-nikde-jinde" },
+      data: {
+        email: `landing.${Date.now()}@example.test`,
+        jmeno: "Návštěvník",
+        prijmeni: "Z Landing Page",
+        souhlasMarketing: false,
+        souhlasPodminky: true,
+        nemamBrokera: true,
+        produkty: [{ nazev: "BSM - Roční členství" }],
+      },
+    });
+    expect(odpoved.status()).toBe(201);
+    const { cislo } = (await odpoved.json()) as { cislo: string };
+
+    // Tak vede odkaz z poděkování na Landing Page (krok 1C).
+    await page.setExtraHTTPHeaders({ "x-forwarded-for": nahodnaAdresa() });
+    const cil = `/objednavky?hledat=${cislo}`;
+    await page.goto(`/prihlaseni?pokracovat=${encodeURIComponent(cil)}`);
+    await page.getByRole("button", { name: "Vyzkoušet jako člen týmu" }).click();
+    await expect(page).toHaveURL((adresa) => adresa.pathname + adresa.search === cil);
+    const obsah = page.getByRole("main");
+    await expect(obsah.getByText(cislo).first()).toBeVisible();
+    await expect(obsah.getByText("Návštěvník Z Landing Page").first()).toBeVisible();
+
+    // Krok „Objednávka z Landing Page“ (a s ním Objednávky) je prošlý.
+    const pruvodce = page.getByRole("region", { name: "Co si tu vyzkoušet" });
+    await expect(pruvodce.getByText("Prošli jste 2 z 6")).toBeVisible();
+  });
+
+  test("z přihlašovacích stránek vede odkaz zpět na Landing Page", async ({ page }) => {
+    // Adresa je `LANDING_PAGE_ADRESA` služby `e2e` v `compose.yaml`.
+    await page.goto("/prihlaseni");
+    await expect(page.getByRole("link", { name: "Zpět na Landing Page" })).toHaveAttribute(
+      "href",
+      "https://landing.example/",
+    );
+    await page.getByRole("button", { name: "English" }).click();
+    await expect(page.getByRole("link", { name: "Back to the landing page" })).toHaveAttribute(
+      "href",
+      "https://landing.example/en/",
+    );
+
+    await page.goto("/ucet/prihlaseni");
+    await expect(page.getByRole("link", { name: "Back to the landing page" })).toBeVisible();
+    await page.getByRole("button", { name: "Česky" }).click();
+    await expect(page.getByRole("link", { name: "Zpět na Landing Page" })).toHaveAttribute(
+      "href",
+      "https://landing.example/",
+    );
+  });
 
   test("ukázka nemá prázdné obrazovky a Eva je aktivní klientka", async ({ page }) => {
     await jakoClenTymu(page);
@@ -198,7 +253,7 @@ test.describe("Ukázka — klient", () => {
       await expect(page.getByRole("heading", { name: "Dobrý den, Eva Malá" })).toBeVisible();
       await expect(page.getByText(PRUH)).toBeVisible();
       await expect(page.getByText("Základy investování").first()).toBeVisible();
-      await expect(page.getByText("Členství Klub BSM — rok").first()).toBeVisible();
+      await expect(page.getByText("BSM - Roční členství").first()).toBeVisible();
       await bezVodorovnehoPosuvu(page);
 
       // „Pokračovat“ vede na lekci s kvízem — krok průvodce „Kurz a kvíz“.

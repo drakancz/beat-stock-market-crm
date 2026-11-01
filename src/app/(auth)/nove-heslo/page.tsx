@@ -12,7 +12,10 @@ export default function NoveHesloPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Nastavení hesla</CardTitle>
+        {/* Hlavní nadpis stránky pro čtečky obrazovky (axe, 24. 10. 2026). */}
+        <CardTitle>
+          <h1>Nastavení hesla</h1>
+        </CardTitle>
         <CardDescription>
           Heslo zadáváš jen ty. Nikdo jiný v systému ho neuvidí, ani administrátor.
         </CardDescription>

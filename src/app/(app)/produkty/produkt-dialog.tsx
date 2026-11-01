@@ -310,6 +310,7 @@ export function ProduktDialog({
                       <PopoverContent
                         className="pointer-events-auto w-(--radix-popover-trigger-width) p-0"
                         align="start"
+                        aria-label="Nabídka názvů produktu"
                       >
                         <Command>
                           <CommandInput

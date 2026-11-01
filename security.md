@@ -19,26 +19,29 @@ aplikace**, takže si musí sama zkontrolovat i `viewer.chybiDvoufazove`
 **Vědomé výjimky — adresy bez přihlášení.** Každá se prokazuje jinak
 a má omezený počet pokusů:
 
-| Adresa                                        | Čím se prokazuje                                          |
-| --------------------------------------------- | --------------------------------------------------------- |
-| `POST /api/leady`                             | klíč `LEAD_API_KEY` v hlavičce                            |
-| `POST /api/objednavky`                        | klíč `ORDER_API_KEY` v hlavičce                           |
-| `POST /api/objednavky/kod` (ověření slevy)    | klíč `ORDER_API_KEY` v hlavičce; nic nezapisuje           |
-| `POST /api/smartemailing/odhlaseni`           | HTTP Basic, heslo `SMARTEMAILING_WEBHOOK_SECRET`          |
-| `/api/auth/*` (Auth.js)                       | je to samotné přihlášení — e-mail, heslo, případně kód    |
-| akce Zapomenuté heslo                         | nic neprozradí; omezený počet, zpracování po odpovědi     |
-| akce Nastavit heslo z odkazu                  | jednorázový token (256 bitů, platí 60 minut)              |
-| `POST /api/uploadthing` (odpověď o nahrání)   | podpis UploadThingu naším `UPLOADTHING_TOKEN`             |
-| `POST /api/mcp` (MCP server pro AI)           | klíč z Mého profilu (`Bearer crm_…`), jen administrátor   |
-| `/ucet/prihlaseni` (přihlášení klienta)       | e-mail a heslo účtu klienta, případně kód; 5 pokusů       |
-| `/ucet/zapomenute-heslo`                      | nic neprozradí; omezený počet, zpracování po odpovědi     |
-| `/ucet/nove-heslo` (heslo klienta z odkazu)   | jednorázový token (256 bitů, platí 60 minut)              |
-| `/ucet/zasady`, `/ucet/podminky`              | jen texty pro klienty, žádná data                         |
-| `/ucet/obchodni-podminky`                     | jen text pro zákazníky před nákupem, žádná data           |
-| `POST /api/planovac` (denní plánovač)         | klíč `PLANOVAC_KEY` (Bearer); 5 špatných za 15 minut      |
-| `GET/POST /api/platby/gopay` (oznámení GoPay) | jen id platby; stav se vždy ověří u GoPay, neznámé id 404 |
-| `/ucet/platba` (návrat z platební brány)      | jen číslo objednávky a stav; stav se ověří u GoPay        |
-| manifesty, ikony a `sw-klient.js`             | jen název, ikony a skript oznámení, žádná data            |
+| Adresa                                        | Čím se prokazuje                                             |
+| --------------------------------------------- | ------------------------------------------------------------ |
+| `POST /api/leady`                             | klíč `LEAD_API_KEY` v hlavičce                               |
+| `POST /api/objednavky`                        | klíč `ORDER_API_KEY` v hlavičce                              |
+| `POST /api/objednavky/kod` (ověření slevy)    | klíč `ORDER_API_KEY` v hlavičce; nic nezapisuje              |
+| `GET /api/objednavky/cenik` (ceník pro web)   | klíč `ORDER_API_KEY` v hlavičce; jen nabídka, nic nezapisuje |
+| `POST /api/smartemailing/odhlaseni`           | HTTP Basic, heslo `SMARTEMAILING_WEBHOOK_SECRET`             |
+| `/api/auth/*` (Auth.js)                       | je to samotné přihlášení — e-mail, heslo, případně kód       |
+| akce Zapomenuté heslo                         | nic neprozradí; omezený počet, zpracování po odpovědi        |
+| akce Nastavit heslo z odkazu                  | jednorázový token (256 bitů, platí 60 minut)                 |
+| `POST /api/uploadthing` (odpověď o nahrání)   | podpis UploadThingu naším `UPLOADTHING_TOKEN`                |
+| `POST /api/mcp` (MCP server pro AI)           | klíč z Mého profilu (`Bearer crm_…`), jen administrátor      |
+| `/ucet/prihlaseni` (přihlášení klienta)       | e-mail a heslo účtu klienta, případně kód; 5 pokusů          |
+| `/ucet/zapomenute-heslo`                      | nic neprozradí; omezený počet, zpracování po odpovědi        |
+| `/ucet/nove-heslo` (heslo klienta z odkazu)   | jednorázový token (256 bitů, platí 60 minut)                 |
+| `/ucet/zasady`, `/ucet/podminky`              | jen texty pro klienty, žádná data                            |
+| `/ucet/obchodni-podminky`                     | jen text pro zákazníky před nákupem, žádná data              |
+| `POST /api/planovac` (denní plánovač)         | klíč `PLANOVAC_KEY` (Bearer); 5 špatných za 15 minut         |
+| `GET/POST /api/platby/gopay` (oznámení GoPay) | jen id platby; stav se vždy ověří u GoPay, neznámé id 404    |
+| `/ucet/platba` (návrat z platební brány)      | jen číslo objednávky a stav; stav se ověří u GoPay           |
+| `GET /api/konzultace/terminy`                 | **jen s `UKAZKA=1`** (jinak 404); klíč `ORDER_API_KEY`       |
+| `POST /api/konzultace/rezervace`              | **jen s `UKAZKA=1`** (jinak 404); klíč `ORDER_API_KEY`       |
+| manifesty, ikony a `sw-klient.js`             | jen název, ikony a skript oznámení, žádná data               |
 
 **Denní plánovač (krok 3A, Jakub souhlasil 4. 10. 2026)** volá jednou
 denně plánovaná služba na Railway. Nečte tělo požadavku — zvenku se nedá
@@ -53,6 +56,15 @@ u GoPay, teprve pak objednávku zaplatí (`src/lib/platby/platby.ts`).
 Návrat klienta (`/ucet/platba`) ukáže jen číslo objednávky a stav. Klíče
 `GOPAY_*` jsou tajemství (pravidlo 5); GoPay dostane e-mail plátce, číslo
 objednávky, produkty a částku — v zásadách mezi zpracovateli.
+
+**Úvodní konzultace zdarma z Landing Page (6H, Jakub souhlasil 27. 10. 2026)** — dvě adresy, které **existují jen v ukázkovém režimu**;
+na ostrém serveru vrací 404 dřív, než se ověří cokoli dalšího. Klíč je
+týž jako u objednávek (drží ho skript Workeru Landing Page, nikdy
+prohlížeč), termíny mají limit 30 a rezervace 10 dotazů za minutu
+z adresy. Ven jde **jen id, začátek a délka termínu** — ne místo, odkaz
+na připojení ani kdo vede. Rezervace založí klienta stejně jako příjem
+z webu (duplicita druhého nezaloží) a zapíše úvodní rezervaci bez
+platby; klient má nejvýš jednu nezrušenou (`src/lib/konzultace-z-webu.ts`).
 
 **Ověření slevového kódu (Fáze 5A, Jakub souhlasil 14. 10. 2026)** volá
 Landing Page, aby zákazníkovi ukázala cenu po slevě ještě před objednáním.

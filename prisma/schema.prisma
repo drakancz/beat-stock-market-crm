@@ -2133,6 +2133,10 @@ model ConsultationBooking {
 
   createdAt DateTime @default(now())
 
+  /// Úvodní konzultace zdarma z Landing Page (6H, Jakub 27. 10. 2026) —
+  /// neubírá ze zaplacených; klient má nejvýš jednu nezrušenou.
+  free Boolean @default(false)
+
   /// Zrušeno — klientem (`cancelledByClient`), nebo administrátorem
   /// (`cancelledById`). Řádek zůstává jako stopa pro časovou osu.
   cancelledAt       DateTime?

@@ -59,7 +59,12 @@ export function Pripominky({ ukoly }: { ukoly: Pripominka[] }) {
         </Button>
       </PopoverTrigger>
 
-      <PopoverContent align="end" className="w-80 max-w-[calc(100vw-1.5rem)] p-0">
+      {/* Název okna pro čtečky obrazovky (axe, 24. 10. 2026). */}
+      <PopoverContent
+        align="end"
+        aria-label="Připomínky úkolů"
+        className="w-80 max-w-[calc(100vw-1.5rem)] p-0"
+      >
         <div className="border-b px-4 py-3">
           <p className="text-sm font-semibold">Připomínky úkolů</p>
           <p className="text-muted-foreground text-xs">Tvoje úkoly na dnes a po termínu.</p>

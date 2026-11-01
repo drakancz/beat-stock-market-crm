@@ -162,7 +162,12 @@ export function SpravaUzivatelu({
           </TableHeader>
           <TableBody>
             {uzivatele.map((uzivatel) => (
-              <TableRow key={uzivatel.id} className={uzivatel.active ? undefined : "opacity-60"}>
+              // Účet bez přístupu tlumenou barvou písma, ne průhledností —
+              // `opacity-60` nesplňovala kontrast pro čtení (axe, 24. 10. 2026).
+              <TableRow
+                key={uzivatel.id}
+                className={uzivatel.active ? undefined : "text-muted-foreground"}
+              >
                 <TableCell className="font-medium whitespace-nowrap">
                   {/* Profil kolegy — administrátor ho tam i upraví. */}
                   <Link

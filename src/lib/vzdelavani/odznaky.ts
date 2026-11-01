@@ -123,6 +123,30 @@ export function isoTyden(okamzik: Date): string {
   return `${datum.getUTCFullYear()}-W${String(tyden).padStart(2, "0")}`;
 }
 
+/** ISO týden (`2026-W39`) jako rozsah dnů pro klienta: „22.–28. 9. 2026“. */
+export function popisTydne(tyden: string): string {
+  const shoda = /^(\d{4})-W(\d{2})$/.exec(tyden);
+  if (!shoda) return tyden;
+  const rok = Number(shoda[1]);
+  // Pondělí prvního týdne je pondělí týdne, ve kterém leží 4. leden.
+  const ctvrtyLeden = new Date(Date.UTC(rok, 0, 4));
+  const pondeli = new Date(ctvrtyLeden);
+  pondeli.setUTCDate(4 - ((ctvrtyLeden.getUTCDay() || 7) - 1) + (Number(shoda[2]) - 1) * 7);
+  const nedele = new Date(pondeli);
+  nedele.setUTCDate(pondeli.getUTCDate() + 6);
+
+  const den = (d: Date) => `${d.getUTCDate()}.`;
+  const mesic = (d: Date) => `${d.getUTCMonth() + 1}.`;
+  const konec = `${den(nedele)} ${mesic(nedele)} ${nedele.getUTCFullYear()}`;
+  if (pondeli.getUTCFullYear() !== nedele.getUTCFullYear()) {
+    return `${den(pondeli)} ${mesic(pondeli)} ${pondeli.getUTCFullYear()} – ${konec}`;
+  }
+  if (pondeli.getUTCMonth() !== nedele.getUTCMonth()) {
+    return `${den(pondeli)} ${mesic(pondeli)} – ${konec}`;
+  }
+  return `${den(pondeli)}–${konec}`;
+}
+
 /**
  * Klient otevřel klientskou část: zapíše se týden (nic víc o návštěvě)
  * a když má čtyři týdny po sobě, dostane odznak. Volá to rám klientské

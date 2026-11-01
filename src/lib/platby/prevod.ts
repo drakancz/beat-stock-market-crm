@@ -1,6 +1,7 @@
 import { renderSVG } from "uqr";
 
 import { db } from "@/lib/db";
+import { cenaPolozkySDph } from "@/lib/dph";
 
 /**
  * Platba převodem v klientské části (Jakub, 20. 10. 2026): číslo účtu
@@ -71,6 +72,82 @@ export function qrSvg(text: string): string {
     whiteColor: "transparent",
     blackColor: "currentColor",
   });
+}
+
+/** Údaje k platbě převodem, jak je dostane Landing Page po objednání. */
+export interface UdajeKPrevodu {
+  /** Celkem s DPH (po slevě) — stejný součet jako v klientské části. */
+  castka: number;
+  mena: string;
+  cisloUctu: string;
+  iban: string;
+  variabilniSymbol: string;
+  prijemce: string | null;
+  /** Text QR platby (SPAYD) — QR kód z něj nakreslí web sám. */
+  qrPlatba: string;
+}
+
+/**
+ * Údaje k převodu pro objednávku z Landing Page (krok 1B, 26. 10. 2026).
+ * Web po objednání ukáže částku, účet, variabilní symbol a QR kód —
+ * v ukázce je brána GoPay vypnutá a převod je jediná cesta.
+ *
+ * Částka se sčítá z položek objednávky (cena ze chvíle objednávky, po
+ * slevě), nikdy z ceníku ani z požadavku. `null`, když v Nastavení → Firma
+ * chybí platné číslo účtu — objednávka se tím neruší.
+ */
+export async function udajeKPrevodu(orderId: string): Promise<UdajeKPrevodu | null> {
+  const [objednavka, firma] = await Promise.all([
+    db.order.findUnique({
+      where: { id: orderId },
+      select: {
+        number: true,
+        currency: true,
+        items: {
+          select: {
+            quantity: true,
+            netPrice: true,
+            vatPercent: true,
+            product: { select: { netPrice: true, vatRate: { select: { rate: true } } } },
+          },
+        },
+      },
+    }),
+    db.companySettings.findUnique({
+      where: { id: "firma" },
+      select: { bankAccount: true, companyName: true },
+    }),
+  ]);
+  if (!objednavka || !firma?.bankAccount) return null;
+
+  const iban = ibanZCislaUctu(firma.bankAccount);
+  if (!iban) return null;
+
+  // Na haléře — součet desetinných čísel by jinak nechal zbytek (0,30000000004).
+  const castka =
+    Math.round(
+      objednavka.items.reduce(
+        (soucet, polozka) => soucet + polozka.quantity * cenaPolozkySDph(polozka),
+        0,
+      ) * 100,
+    ) / 100;
+  const vs = variabilniSymbol(objednavka.number);
+
+  return {
+    castka,
+    mena: objednavka.currency,
+    cisloUctu: firma.bankAccount,
+    iban,
+    variabilniSymbol: vs,
+    prijemce: firma.companyName,
+    qrPlatba: textQrPlatby({
+      iban,
+      castka,
+      mena: objednavka.currency,
+      vs,
+      zprava: `Objednavka ${objednavka.number}`,
+    }),
+  };
 }
 
 /** Dá se platit převodem? Jen když je v Nastavení → Firma platné číslo účtu. */

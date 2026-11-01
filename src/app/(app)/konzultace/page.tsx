@@ -40,7 +40,9 @@ export default async function KonzultacePage() {
     durationMinutes: true,
     place: true,
     host: { select: { name: true } },
-    activeBooking: { select: { id: true, client: { select: { id: true, name: true } } } },
+    activeBooking: {
+      select: { id: true, free: true, client: { select: { id: true, name: true } } },
+    },
   } as const;
 
   const [nadchazejici, probehle, tym, sKonzultaci] = await Promise.all([
@@ -98,6 +100,8 @@ export default async function KonzultacePage() {
         ) : (
           <Badge variant="outline">Volný</Badge>
         )}
+        {/* Úvodní konzultace zdarma z Landing Page (6H) — neubírá ze zaplacených. */}
+        {t.activeBooking?.free && <Badge variant="secondary">Úvodní z webu</Badge>}
         {jeAdmin && !probehl && t.activeBooking && (
           <Potvrzeni
             tlacitko="Zrušit rezervaci"
@@ -156,7 +160,8 @@ export default async function KonzultacePage() {
         ) : (
           <>
             <section className="space-y-2">
-              <h3 className="text-sm font-semibold">
+              {/* h2: hned pod h1 stránky (CardTitle není nadpis), jinak axe heading-order. */}
+              <h2 className="text-sm font-semibold">
                 Nadcházející
                 {nadchazejici.length > 0 && (
                   <span className="text-muted-foreground font-normal">
@@ -164,7 +169,7 @@ export default async function KonzultacePage() {
                     · volných {volnych} z {nadchazejici.length}
                   </span>
                 )}
-              </h3>
+              </h2>
               {nadchazejici.length === 0 ? (
                 <p className="text-muted-foreground text-sm">Žádný nadcházející termín.</p>
               ) : (
@@ -175,7 +180,7 @@ export default async function KonzultacePage() {
             </section>
             {probehle.length > 0 && (
               <section className="space-y-2">
-                <h3 className="text-sm font-semibold">Proběhlé za posledních {PROBEHLE_DNU} dní</h3>
+                <h2 className="text-sm font-semibold">Proběhlé za posledních {PROBEHLE_DNU} dní</h2>
                 <ul className="divide-border divide-y rounded-md border">
                   {probehle.map((t) => radek(t, true))}
                 </ul>

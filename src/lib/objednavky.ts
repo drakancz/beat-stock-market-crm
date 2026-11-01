@@ -11,6 +11,7 @@ import { opisDelkuPlatnosti, prepocitejPlatnost } from "@/lib/platnost";
 import { spocitejSlevu, type VysledekSlevy } from "@/lib/slevove-kody";
 import { dataObjednavky, posliWebhook } from "@/lib/webhooky";
 import { odkazNaPlatbu as odkazPlatby } from "@/lib/platby/platby";
+import { udajeKPrevodu, type UdajeKPrevodu } from "@/lib/platby/prevod";
 import { poZaplaceni } from "@/lib/zaplaceni";
 import { fakturacniSchema, sloupceFakturace } from "@/lib/fakturacni-udaje";
 import type { OrderChannel } from "@/generated/prisma/enums";
@@ -119,6 +120,14 @@ const vstupSchema = z
 
     /** Fakturační údaje (19. 10. 2026) — nepovinné, přepíšou ty u klienta. */
     fakturacni: fakturacniSchema.optional(),
+
+    /**
+     * Zákazník zaškrtl souhlas s obchodními podmínkami (Landing Page,
+     * 26. 10. 2026). K objednávce se zapíše aktuální znění
+     * (`OBCHODNI_PODMINKY_OD`) jako v klientské části. Nepovinné kvůli
+     * starším webům; `false` se nepřijímá — bez souhlasu web neobjednává.
+     */
+    souhlasPodminky: z.literal(true).optional(),
   })
   .strict();
 
@@ -135,6 +144,12 @@ export type VysledekObjednavky =
       sleva?: { kod: string; celkemPredSlevou: number; sleva: number; celkem: number };
       /** Adresa platební stránky GoPay — jen u nezaplacené, když je brána zapnutá. */
       odkazNaPlatbu?: string;
+      /**
+       * Údaje k převodu s QR platbou (krok 1B, 26. 10. 2026) — jen
+       * u nezaplacené objednávky z Landing Page a jen s platným číslem účtu
+       * v Nastavení → Firma.
+       */
+      platba?: UdajeKPrevodu;
     }
   | { ok: false; chyba: string };
 
@@ -283,16 +298,32 @@ export async function prijmiObjednavku(telo: unknown): Promise<VysledekObjednavk
   if (!lead.ok) return { ok: false, chyba: lead.chyba };
 
   const nazev = data.nazev?.trim() || nazevZProduktu(produkty.nazvy);
+  const stav = data.stav ?? "NOVA";
 
-  return zapisObjednavku({
+  const vysledek = await zapisObjednavku({
     klientId: lead.klientId,
     produkty,
     nazev,
-    stav: data.stav ?? "NOVA",
+    stav,
     kodText,
     kanal: "LANDING_PAGE",
     fakturacni: data.fakturacni,
+    ...(data.souhlasPodminky ? { podminky: OBCHODNI_PODMINKY_OD } : {}),
   });
+  if (!vysledek.ok || stav === "ZAPLACENO") return vysledek;
+
+  // Poděkování na webu ukáže převod s QR kódem (krok 1B). Výpadek tady
+  // objednávku neshodí — je zapsaná a zaplatit jde i podle faktury.
+  try {
+    const platba = await udajeKPrevodu(vysledek.objednavkaId);
+    return platba ? { ...vysledek, platba } : vysledek;
+  } catch (chyba) {
+    console.error(
+      "Údaje k platbě se nepodařilo připravit:",
+      chyba instanceof Error ? chyba.name : "neznámá",
+    );
+    return vysledek;
+  }
 }
 
 /**

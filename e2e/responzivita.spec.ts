@@ -79,7 +79,7 @@ test.describe("rozvržení", () => {
 
     if (jeMobil(page)) {
       await expect(odkaz).toBeHidden();
-      await page.getByRole("button", { name: "Toggle Sidebar" }).click();
+      await page.getByRole("button", { name: "Zobrazit nebo skrýt menu" }).click();
       await expect(odkaz).toBeVisible();
     } else {
       await expect(odkaz).toBeVisible();

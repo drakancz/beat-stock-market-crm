@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { LogoLockup } from "@/components/brand/logo";
+import { ZpetNaLandingPage } from "@/components/zpet-na-landing-page";
 import { nactiJazyk } from "@/lib/jazyk-server";
 import { TEXTY_VSTUPU } from "@/lib/texty-vstupu";
 
@@ -45,6 +46,7 @@ export default async function VerejneLayout({ children }: { children: React.Reac
             {t.dokumenty.obchodni}
           </Link>
         </nav>
+        <ZpetNaLandingPage jazyk={jazyk} />
       </footer>
     </div>
   );

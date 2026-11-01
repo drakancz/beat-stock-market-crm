@@ -9,6 +9,8 @@ export type KrokPruvodce = {
   cesta: string;
   /** Jen přesně tahle adresa, ne stránky pod ní (úvod klientské části). */
   presne?: boolean;
+  /** Prošlý jen s některým z těchto parametrů v adrese (hledání, filtr). */
+  sParametrem?: string[];
   nazev: string;
   popis: string;
   /** Totéž anglicky (src/lib/jazyk.ts). */
@@ -37,6 +39,19 @@ export const KROKY_PRUVODCE: Record<DruhPruvodce, KrokPruvodce[]> = {
       en: {
         nazev: "Client record",
         popis: "Open Eva Malá: orders, courses, timeline, notes and tags.",
+      },
+    },
+    {
+      // Landing Page (krok 1C, 26. 10. 2026): poděkování po objednání vede
+      // přes přihlášení na `/objednavky?hledat=<číslo>`.
+      href: "/objednavky?stav=NOVA",
+      cesta: "/objednavky",
+      sParametrem: ["hledat", "stav"],
+      nazev: "Objednávka z Landing Page",
+      popis: "Najděte objednávku, kterou jste právě poslali z Landing Page — je mezi novými.",
+      en: {
+        nazev: "Order from the landing page",
+        popis: "Find the order you have just sent from the landing page: it is among the new ones.",
       },
     },
     {

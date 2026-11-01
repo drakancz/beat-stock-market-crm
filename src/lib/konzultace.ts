@@ -27,6 +27,11 @@ import { dataRezervace, posliWebhook } from "@/lib/webhooky";
  * podmíněným zápisem (`activeBookingId` jen když je prázdné). Souběžné
  * rezervace téhož klienta hlídá zámek řádku klienta (`FOR UPDATE`), takže
  * dvě kliknutí naráz nespotřebují víc, než má zaplaceno.
+ *
+ * **Úvodní konzultace zdarma** (6H, Jakub 27. 10. 2026) si návštěvník
+ * Landing Page zarezervuje bez platby — jen v ukázkovém režimu, adresa
+ * `POST /api/konzultace/rezervace`. Rezervace má `free`, do využitých se
+ * nepočítá a klient má nejvýš jednu nezrušenou.
  */
 
 /** Klient zruší nebo přeloží sám nejpozději tolik hodin před začátkem. */
@@ -50,16 +55,18 @@ export async function stavKonzultaci(
   clientId: string,
   klient: Transakce | typeof db = db,
 ): Promise<StavKonzultaci> {
-  const [polozky, vyuzito] = await Promise.all([
-    klient.orderItem.aggregate({
-      where: {
-        product: { kind: "KONZULTACE" },
-        order: { clientId, deletedAt: null, status: "ZAPLACENO" },
-      },
-      _sum: { quantity: true },
-    }),
-    klient.consultationBooking.count({ where: { clientId, cancelledAt: null } }),
-  ]);
+  // Po sobě, ne přes Promise.all: volá se i s transakcí (viz platnost.ts).
+  const polozky = await klient.orderItem.aggregate({
+    where: {
+      product: { kind: "KONZULTACE" },
+      order: { clientId, deletedAt: null, status: "ZAPLACENO" },
+    },
+    _sum: { quantity: true },
+  });
+  // Úvodní zdarma z webu ze zaplacených neubírá.
+  const vyuzito = await klient.consultationBooking.count({
+    where: { clientId, cancelledAt: null, free: false },
+  });
   const zaplaceno = polozky._sum.quantity ?? 0;
   return { zaplaceno, vyuzito, zbyva: Math.max(0, zaplaceno - vyuzito) };
 }
@@ -67,6 +74,8 @@ export async function stavKonzultaci(
 export interface KonzultaceKlienta extends StavKonzultaci {
   /** Začátek nejbližší nadcházející rezervace, nebo `null`. */
   pristi: Date | null;
+  /** Má nezrušenou úvodní konzultaci zdarma z Landing Page (6H). */
+  uvodni: boolean;
 }
 
 /**
@@ -77,15 +86,16 @@ export async function nactiKonzultaceKlienta(
   clientId: string,
   ted = new Date(),
 ): Promise<KonzultaceKlienta> {
-  const [stav, pristi] = await Promise.all([
+  const [stav, pristi, uvodni] = await Promise.all([
     stavKonzultaci(clientId),
     db.consultationBooking.findFirst({
       where: { clientId, cancelledAt: null, slot: { deletedAt: null, startsAt: { gt: ted } } },
       orderBy: { slot: { startsAt: "asc" } },
       select: { slot: { select: { startsAt: true } } },
     }),
+    db.consultationBooking.count({ where: { clientId, cancelledAt: null, free: true } }),
   ]);
-  return { ...stav, pristi: pristi?.slot.startsAt ?? null };
+  return { ...stav, pristi: pristi?.slot.startsAt ?? null, uvodni: uvodni > 0 };
 }
 
 /** Termín, který si klient může vzít: budoucí, nesmazaný, volný. */
@@ -103,6 +113,7 @@ export function lzeZrusitKlientem(zacatek: Date, ted = new Date()): boolean {
 const RADEK_REZERVACE = {
   id: true,
   clientId: true,
+  free: true,
   cancelledAt: true,
   taskId: true,
   slot: { select: { id: true, startsAt: true } },
@@ -115,17 +126,27 @@ async function zamkniKlienta(tx: Transakce, clientId: string) {
 
 /**
  * Zapíše rezervaci uvnitř transakce. Vyhodí `ChybaKonzultace` s textem pro
- * klienta, když nemá volnou konzultaci nebo je termín pryč.
+ * klienta, když nemá volnou konzultaci nebo je termín pryč. `zdarma` =
+ * úvodní konzultace z webu: místo zaplacené se hlídá, že jinou nezrušenou
+ * úvodní klient nemá.
  */
 async function zapisRezervaci(
   tx: Transakce,
   clientId: string,
   slotId: string,
   ted: Date,
+  zdarma = false,
 ): Promise<{ bookingId: string; startsAt: Date }> {
-  const stav = await stavKonzultaci(clientId, tx);
-  if (stav.zbyva < 1) {
-    throw new ChybaKonzultace("Nemáte žádnou zaplacenou konzultaci k rezervaci.");
+  if (zdarma) {
+    const uvodni = await tx.consultationBooking.count({
+      where: { clientId, cancelledAt: null, free: true },
+    });
+    if (uvodni > 0) throw new ChybaKonzultace("Úvodní konzultaci už máte zarezervovanou.");
+  } else {
+    const stav = await stavKonzultaci(clientId, tx);
+    if (stav.zbyva < 1) {
+      throw new ChybaKonzultace("Nemáte žádnou zaplacenou konzultaci k rezervaci.");
+    }
   }
 
   const termin = await tx.consultationSlot.findFirst({
@@ -139,7 +160,7 @@ async function zapisRezervaci(
   if (!termin || termin.startsAt <= ted) throw new ChybaKonzultace("Takový termín není volný.");
 
   const rezervace = await tx.consultationBooking.create({
-    data: { slotId: termin.id, clientId },
+    data: { slotId: termin.id, clientId, free: zdarma },
     select: { id: true },
   });
 
@@ -245,7 +266,7 @@ export async function klientiSVolnouKonzultaci(): Promise<{ id: string; name: st
      GROUP BY c."id", c."name"
     HAVING SUM(i."quantity") > (
       SELECT count(*) FROM "consultation_bookings" b
-       WHERE b."clientId" = c."id" AND b."cancelledAt" IS NULL
+       WHERE b."clientId" = c."id" AND b."cancelledAt" IS NULL AND b."free" = false
     )
      ORDER BY c."name"`;
 }
@@ -278,6 +299,39 @@ export async function zarezervujKonzultaci(
     posliWebhook("konzultace.rezervovana", () => dataRezervace(vysledek.bookingId));
     zapisDoKalendare(vysledek.bookingId);
     return vysledek.startsAt;
+  } catch (chyba) {
+    srozumitelne(chyba);
+  }
+}
+
+/**
+ * Úvodní konzultace zdarma z Landing Page (6H, Jakub 27. 10. 2026) — volá
+ * jen `POST /api/konzultace/rezervace`, a to jen v ukázkovém režimu.
+ * Audit bez „kdo“ se značkou zdroje; klient dostane potvrzení jako jindy
+ * (v ukázce nic neodejde).
+ */
+export async function zarezervujUvodniKonzultaci(
+  clientId: string,
+  slotId: string,
+): Promise<{ bookingId: string; startsAt: Date }> {
+  const ted = new Date();
+  try {
+    const vysledek = await db.$transaction(async (tx) => {
+      await zamkniKlienta(tx, clientId);
+      const zapsano = await zapisRezervaci(tx, clientId, slotId, ted, true);
+      await zapisDoAuditu(tx, {
+        userId: null,
+        entity: "clients",
+        entityId: clientId,
+        action: "konzultace.rezervovana",
+        after: { termin: zapsano.startsAt.toISOString(), zdarma: true, zdroj: "landing-page" },
+      });
+      return zapsano;
+    });
+    await potvrdKlientovi(clientId, vysledek.startsAt, "rezervace");
+    posliWebhook("konzultace.rezervovana", () => dataRezervace(vysledek.bookingId));
+    zapisDoKalendare(vysledek.bookingId);
+    return vysledek;
   } catch (chyba) {
     srozumitelne(chyba);
   }
@@ -341,7 +395,8 @@ export async function prelozKonzultaci(
         );
       }
       await zapisZruseni(tx, rezervace, { klient: true }, ted);
-      const novy = await zapisRezervaci(tx, clientId, slotId, ted);
+      // Úvodní zdarma zůstane úvodní i na novém termínu.
+      const novy = await zapisRezervaci(tx, clientId, slotId, ted, rezervace.free);
       await zapisDoAuditu(tx, {
         userId: null,
         entity: "clients",

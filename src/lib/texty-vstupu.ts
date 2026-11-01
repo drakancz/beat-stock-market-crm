@@ -43,6 +43,8 @@ export type TextyVstupu = {
   klient: TextyStranky & { podtitul: string };
   dokumenty: { nazev: string; zasady: string; podminky: string; obchodni: string };
   pruh: string;
+  /** Odkaz z přihlašovacích stránek ukázky zpět na Landing Page (krok 1C). */
+  zpetNaLandingPage: string;
   pruvodce: {
     nadpis: string;
     tlacitko: string;
@@ -112,6 +114,7 @@ export const TEXTY_VSTUPU: Record<Jazyk, TextyVstupu> = {
       obchodni: "Obchodní podmínky",
     },
     pruh: "Ukázka — data jsou vymyšlená a každou noc se vrátí do výchozího stavu. Nic neodchází ven.",
+    zpetNaLandingPage: "Zpět na Landing Page",
     pruvodce: {
       nadpis: "Co si tu vyzkoušet",
       tlacitko: "Co si vyzkoušet",
@@ -170,6 +173,7 @@ export const TEXTY_VSTUPU: Record<Jazyk, TextyVstupu> = {
       obchodni: "Terms of sale (CZ)",
     },
     pruh: "Demo: the data is made up and resets to its initial state every night. Nothing is sent out.",
+    zpetNaLandingPage: "Back to the landing page",
     pruvodce: {
       nadpis: "What to try here",
       tlacitko: "What to try",

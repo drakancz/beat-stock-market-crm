@@ -25,7 +25,7 @@ export function PopisChyby({ detail, popisek }: { detail: string | null; popisek
           <Info />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-80">
+      <PopoverContent align="start" className="w-80" aria-label={`Podrobnosti: ${popisek}`}>
         <PopoverHeader>
           <PopoverTitle>Co přesně se stalo</PopoverTitle>
           <PopoverDescription className="break-words whitespace-pre-wrap">

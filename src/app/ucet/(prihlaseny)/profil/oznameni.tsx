@@ -175,7 +175,10 @@ export function OznameniKlienta({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Upozornění</CardTitle>
+        {/* Nadpis 2. úrovně — pod ním jsou `h3` (axe heading-order, 24. 10. 2026). */}
+        <CardTitle>
+          <h2>Upozornění</h2>
+        </CardTitle>
         <CardDescription>
           Dáme vám vědět o zaplacené objednávce, povoleném přístupu do programu, blížícím se konci
           členství a o zprávách od nás. Když nemáte oznámení povolená na žádném zařízení, pošleme

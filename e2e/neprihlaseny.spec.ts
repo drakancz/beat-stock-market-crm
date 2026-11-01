@@ -77,8 +77,8 @@ test.describe("nepřihlášený návštěvník", () => {
     const odpoved = await request.post("/api/leady", {
       data: { jmeno: "Nikdo", email: "nikdo@example.test" },
     });
-    // V testech klíč není nastavený, takže adresa je vypnutá (503);
-    // se špatným klíčem by to bylo 401. Založení (201) nesmí projít.
+    // Bez klíče 401 (503, kdyby příjem nebyl zapnutý). Založení (201)
+    // nesmí projít.
     expect([401, 503]).toContain(odpoved.status());
   });
 

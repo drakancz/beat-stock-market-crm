@@ -57,4 +57,11 @@ test.describe("jazyk přihlašovacích stránek", () => {
     await page.goto("/prihlaseni");
     await expect(page.getByRole("heading", { name: "Přihlášení" })).toBeVisible();
   });
+
+  test("mimo ukázku odkaz zpět na Landing Page není", async ({ page }) => {
+    // `LANDING_PAGE_ADRESA` je v testech vyplněná — rozhoduje `UKAZKA=1` (krok 1C).
+    await page.goto("/prihlaseni");
+    await expect(page.getByRole("heading", { name: "Přihlášení" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Zpět na Landing Page" })).toHaveCount(0);
+  });
 });

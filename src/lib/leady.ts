@@ -80,10 +80,22 @@ const vstupSchema = z
     currency: MENA.optional(),
     /** Souhlas s marketingem, pokud ho formulář na webu sbírá. */
     souhlasMarketing: z.boolean().optional(),
+    /**
+     * O co klient na webu projevil zájem (Jakub, 27. 10. 2026) — jen pevné
+     * hodnoty, do poznámky jde z `ZAJMY` hotová věta, nikdy text z webu.
+     */
+    zajem: z.enum(["ukazkova-lekce", "uvodni-konzultace"]).optional(),
   })
   .strict();
 
 export type VstupLeadu = z.infer<typeof vstupSchema>;
+
+/** Věta do poznámky ke každému zájmu z `vstupSchema.zajem`. */
+const ZAJMY: Record<NonNullable<VstupLeadu["zajem"]>, string> = {
+  "ukazkova-lekce": "Chce ukázkovou lekci zdarma.",
+  // Rezervace z Landing Page (6H) — termín je v Konzultacích.
+  "uvodni-konzultace": "Chce úvodní konzultaci zdarma.",
+};
 
 export type VysledekLeadu =
   | {
@@ -404,6 +416,7 @@ export async function prijmiLead(
       objednavka
         ? `${den} — další objednávka z Landing Page.`
         : `${den} — další zpráva z formuláře na webu.`,
+      data.zajem ? ZAJMY[data.zajem] : null,
       vratit ? "Klient byl ve Smazaných, objednávka ho vrátila mezi klienty." : null,
       celeJmeno ? `Uvedené jméno: ${celeJmeno}.` : null,
       `E-mail: ${email}.`,
@@ -510,6 +523,7 @@ export async function prijmiLead(
     objednavka
       ? `${den} — klient přišel z objednávky na Landing Page.`
       : `${den} — klient přišel z webu.`,
+    data.zajem ? ZAJMY[data.zajem] : null,
     celeJmeno ? null : "Jméno ve formuláři nedorazilo, doplň ho.",
     vetaOBrokerech(brokeri, nemaBrokera),
     objednavka

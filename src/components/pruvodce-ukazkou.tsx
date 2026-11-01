@@ -76,7 +76,11 @@ function rozloz(text: string): Ulozeno {
   }
 }
 
-function jePodCestou(pathname: string, { cesta, presne }: KrokPruvodce) {
+function jePodCestou(pathname: string, { cesta, presne, sParametrem }: KrokPruvodce) {
+  if (sParametrem) {
+    const parametry = new URLSearchParams(window.location.search);
+    if (!sParametrem.some((p) => parametry.get(p))) return false;
+  }
   if (presne) return pathname === cesta;
   if (cesta.endsWith("/")) return pathname.startsWith(cesta);
   return pathname === cesta || pathname.startsWith(`${cesta}/`);

@@ -106,6 +106,12 @@ export default async function ZasadyPage() {
             centrum v Evropské unii),
           </li>
           <li>
+            <strong>Cloudflare</strong> — provoz naší prodejní stránky; předá do systému objednávku
+            nebo přihlášku, kterou na ní vyplníte, a měří návštěvnost bez cookies (jen souhrnná
+            čísla, například kolik lidí stránku otevřelo a odkud přišli; servery i mimo Evropskou
+            unii),
+          </li>
+          <li>
             <strong>SmartEmailing</strong> — rozesílání novinek, jen pokud máte souhlas (e-mail a
             jméno),
           </li>

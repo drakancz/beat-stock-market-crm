@@ -22,6 +22,19 @@ export function jeUkazka(): boolean {
   return process.env.UKAZKA === "1";
 }
 
+/**
+ * Adresa Landing Page pro odkaz zpět z přihlašovacích stránek ukázky
+ * (krok 1C, 26. 10. 2026). Zadává ji Jakub na Railway
+ * (`LANDING_PAGE_ADRESA`); bez ukázkového režimu, bez adresy nebo
+ * s adresou jinou než `https` se odkaz neukáže.
+ */
+export function adresaLandingPage(): URL | null {
+  const text = process.env.LANDING_PAGE_ADRESA?.trim();
+  if (!jeUkazka() || !text || !URL.canParse(text)) return null;
+  const adresa = new URL(text);
+  return adresa.protocol === "https:" ? adresa : null;
+}
+
 /** Zkušební člen týmu: administrátor bez Správy uživatelů. */
 export const UKAZKOVY_TYM = {
   email: "ukazka@beatstockmarket.test",
@@ -35,7 +48,8 @@ export const UKAZKOVY_KLIENT = {
 } as const;
 
 /** Hláška pro akci, kterou ukázka nepouští. */
-export const VYPNUTO_V_UKAZCE = "V ukázce je tohle vypnuté — data jsou vymyšlená a nic neodchází ven.";
+export const VYPNUTO_V_UKAZCE =
+  "V ukázce je tohle vypnuté — data jsou vymyšlená a nic neodchází ven.";
 
 /** Je tohle ukázkový účet člena týmu? Bez ukázkového režimu nikdy. */
 export function jeUkazkovyTym(email: string | null | undefined): boolean {

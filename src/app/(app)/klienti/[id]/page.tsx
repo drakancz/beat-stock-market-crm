@@ -624,12 +624,19 @@ export default async function KlientPage({ params }: PageProps<"/klienti/[id]">)
           />
           <Row label="Aktivní týdny" value={`${aktivnichTydnu} z posledních 12`} />
           <Row label="Dokončené lekce za 30 dní" value={String(lekciZa30Dni)} />
-          {konzultace.zaplaceno > 0 && (
+          {(konzultace.zaplaceno > 0 || konzultace.uvodni) && (
             <Row
               label="Konzultace"
-              value={`zaplaceno ${konzultace.zaplaceno}, využito ${konzultace.vyuzito}${
-                konzultace.pristi ? `, příští ${formatDatumCas(konzultace.pristi)}` : ""
-              }`}
+              value={[
+                konzultace.zaplaceno > 0
+                  ? `zaplaceno ${konzultace.zaplaceno}, využito ${konzultace.vyuzito}`
+                  : null,
+                // Úvodní zdarma z Landing Page (6H) — mimo zaplacené.
+                konzultace.uvodni ? "úvodní z webu" : null,
+                konzultace.pristi ? `příští ${formatDatumCas(konzultace.pristi)}` : null,
+              ]
+                .filter(Boolean)
+                .join(", ")}
             />
           )}
           {klientNechodi && (
