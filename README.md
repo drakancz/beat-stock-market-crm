@@ -4,7 +4,7 @@
 Objednávky chodí z webu, tým je vyřizuje v CRM a klienti mají vlastní
 aplikaci v telefonu s kurzy, členskou sekcí a oznámeními.
 
-**Vyzkoušejte si to:** [živá ukázka CRM](https://crm-beatstockmarket-dev.up.railway.app/prihlaseni) · [Landing Page napojená na CRM](https://landing-page.jakubkostan.workers.dev/) · [její kód](https://github.com/drakancz/beat-stock-market-landing-page)
+**Vyzkoušejte si to:** [živá ukázka CRM](https://crm.jakubkostan.cz/prihlaseni) · [Landing Page napojená na CRM](https://landing.jakubkostan.cz/) · [její kód](https://github.com/drakancz/beat-stock-market-landing-page)
 
 Next.js 16 · React 19 · TypeScript · PostgreSQL · Prisma · Playwright · Docker
 
