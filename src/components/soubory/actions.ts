@@ -85,6 +85,11 @@ function prekresliObrazovky(ownerType: AttachmentOwner, ownerId: string) {
     case "KLIENT":
       revalidatePath(`/klienti/${ownerId}`);
       return;
+    case "LEKCE":
+      // Detail kurzu v CRM (id kurzu tu není po ruce) a lekce u klienta.
+      revalidatePath("/vzdelavani", "layout");
+      revalidatePath(`/ucet/lekce/${ownerId}`);
+      return;
   }
 }
 
@@ -115,7 +120,13 @@ export async function smazSoubor(id: string): Promise<VysledekAkce> {
   if (!(await smiVidet(viewer, soubor.ownerType, soubor.ownerId)))
     return { ok: false, chyba: "Soubor se nepodařilo najít." };
   if (!smiSmazat(viewer, soubor))
-    return { ok: false, chyba: "Smazat soubor smí jen ten, kdo ho nahrál, a administrátor." };
+    return {
+      ok: false,
+      chyba:
+        soubor.ownerType === "LEKCE"
+          ? "Materiály u lekcí maže jen administrátor."
+          : "Smazat soubor smí jen ten, kdo ho nahrál, a administrátor.",
+    };
 
   if (!jeUlozisteDostupne(soubor.storage))
     return { ok: false, chyba: "Nahrávání souborů není nastavené, soubor smazat nejde." };

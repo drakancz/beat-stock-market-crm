@@ -127,7 +127,8 @@ export async function prijmiSouborDoS3(
 ): Promise<VysledekPrijmu> {
   const nazev = bezpecnyNazev(vstup.nazev);
 
-  if (!jePovoleny(vstup.typ)) return { ok: false, duvod: "tenhle typ souboru nahrát nejde" };
+  if (!jePovoleny(vstup.typ, vstup.ownerType))
+    return { ok: false, duvod: "tenhle typ souboru nahrát nejde" };
   if (vstup.obsah.byteLength === 0) return { ok: false, duvod: "soubor je prázdný" };
   if (vstup.obsah.byteLength > LIMIT_BAJTU)
     return { ok: false, duvod: `soubor je větší než ${LIMIT_POPIS_LIDSKY}` };

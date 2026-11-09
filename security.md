@@ -36,6 +36,7 @@ a má omezený počet pokusů:
 | `/ucet/nove-heslo` (heslo klienta z odkazu)   | jednorázový token (256 bitů, platí 60 minut)                 |
 | `/ucet/zasady`, `/ucet/podminky`              | jen texty pro klienty, žádná data                            |
 | `/ucet/obchodni-podminky`                     | jen text pro zákazníky před nákupem, žádná data              |
+| `/ucet/kurz-zdarma/[id]` (minikurz zdarma)    | jen text a video lekcí, které administrátor označil zdarma   |
 | `POST /api/planovac` (denní plánovač)         | klíč `PLANOVAC_KEY` (Bearer); 5 špatných za 15 minut         |
 | `GET/POST /api/platby/gopay` (oznámení GoPay) | jen id platby; stav se vždy ověří u GoPay, neznámé id 404    |
 | `/ucet/platba` (návrat z platební brány)      | jen číslo objednávky a stav; stav se ověří u GoPay           |
@@ -65,6 +66,12 @@ z adresy. Ven jde **jen id, začátek a délka termínu** — ne místo, odkaz
 na připojení ani kdo vede. Rezervace založí klienta stejně jako příjem
 z webu (duplicita druhého nezaloží) a zapíše úvodní rezervaci bez
 platby; klient má nejvýš jednu nezrušenou (`src/lib/konzultace-z-webu.ts`).
+
+**Minikurz zdarma (Platforma B, Jakub souhlasil 5. 11. 2026)** — veřejná
+ukázka kurzu pro zájemce. Ukáže jen text a video lekcí, které
+administrátor označil jako zdarma, ostatní lekce jen názvem; kvíz,
+materiály ani nic o klientech ne. Nic nezapisuje. Koncept, smazaný kurz
+a kurz bez lekce zdarma vrací 404 (`src/lib/vzdelavani/kurz-zdarma.ts`).
 
 **Ověření slevového kódu (Fáze 5A, Jakub souhlasil 14. 10. 2026)** volá
 Landing Page, aby zákazníkovi ukázala cenu po slevě ještě před objednáním.

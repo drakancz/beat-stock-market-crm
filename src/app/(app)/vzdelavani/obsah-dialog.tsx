@@ -45,6 +45,8 @@ export function ObsahDialog({
     zverejneno?: boolean;
     /** Postupné odemykání lekce (5C, 18. 10. 2026); den jako `RRRR-MM-DD`. */
     odemceni?: { dni: string; od: string; poPredchozi: boolean };
+    /** Ukázková lekce zdarma (Platforma B, 5. 11. 2026). */
+    zdarma?: boolean;
   };
   ulozit: (
     formData: FormData,
@@ -204,6 +206,26 @@ export function ObsahDialog({
                   Až po dokončení předchozí lekce
                 </label>
               </fieldset>
+            )}
+
+            {druh === "lekce" && (
+              // Minikurz zdarma (Platforma B, Jakub 5. 11. 2026). Formulář
+              // vidí jen administrátor, akce si to ověří znovu.
+              <div className="space-y-1 rounded-md border p-3">
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    name="freePreview"
+                    defaultChecked={obsah?.zdarma}
+                    className="accent-primary size-4"
+                  />
+                  Ukázková lekce zdarma
+                </label>
+                <p className="text-muted-foreground text-xs">
+                  Text a video uvidí každý i bez nákupu a přihlášení na veřejné stránce kurzu. Kvíz
+                  a materiály dál jen kupci. Lekce zdarma je otevřená hned, bez pravidla výš.
+                </p>
+              </div>
             )}
 
             {sezverejnenim && (

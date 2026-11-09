@@ -159,6 +159,8 @@ const lekceSchema = z.object({
     .refine((den) => den === "" || denSchema.safeParse(den).success, "Datum otevření není platné.")
     .transform((den) => (den === "" ? null : denSchema.parse(den))),
   unlockAfterPrevious: z.enum(["on"]).nullable(),
+  // Ukázková lekce zdarma (Platforma B, Jakub 5. 11. 2026) — jen administrátor.
+  freePreview: z.enum(["on"]).nullable(),
 });
 
 export async function ulozLekci(formData: FormData): Promise<VysledekVzdelavani> {
@@ -173,6 +175,7 @@ export async function ulozLekci(formData: FormData): Promise<VysledekVzdelavani>
     unlockAfterDays: formData.get("unlockAfterDays") ?? "",
     unlockOn: formData.get("unlockOn") ?? "",
     unlockAfterPrevious: formData.get("unlockAfterPrevious"),
+    freePreview: formData.get("freePreview"),
   });
   if (!vstup.success) return { ok: false, chyba: vstup.error.issues[0]!.message };
   const { id, courseId, title, body, videoUrl } = vstup.data;
@@ -181,7 +184,16 @@ export async function ulozLekci(formData: FormData): Promise<VysledekVzdelavani>
     unlockOn: vstup.data.unlockOn,
     unlockAfterPrevious: vstup.data.unlockAfterPrevious === "on",
   };
+  const freePreview = vstup.data.freePreview === "on";
   if (!body && !videoUrl) return { ok: false, chyba: "Lekce potřebuje text, video, nebo obojí." };
+  // Lekce zdarma je otevřená každému hned — kupec by jinak čekal na lekci,
+  // kterou návštěvník bez nákupu vidí.
+  if (freePreview && popisPravidla(odemceni)) {
+    return {
+      ok: false,
+      chyba: "Lekce zdarma je otevřená hned. Zruš pravidlo, kdy se lekce otevře, nebo zdarma.",
+    };
+  }
 
   const kurz = await db.course.findFirst({
     where: { id: courseId, deletedAt: null },
@@ -202,7 +214,7 @@ export async function ulozLekci(formData: FormData): Promise<VysledekVzdelavani>
     if (id) {
       await tx.courseLesson.update({
         where: { id },
-        data: { title, body, videoUrl: videoUrl || null, ...odemceni },
+        data: { title, body, videoUrl: videoUrl || null, ...odemceni, freePreview },
       });
     } else {
       const posledni = await tx.courseLesson.aggregate({
@@ -216,6 +228,7 @@ export async function ulozLekci(formData: FormData): Promise<VysledekVzdelavani>
           body,
           videoUrl: videoUrl || null,
           ...odemceni,
+          freePreview,
           position: (posledni._max.position ?? 0) + 1,
         },
         select: { id: true },
@@ -227,7 +240,7 @@ export async function ulozLekci(formData: FormData): Promise<VysledekVzdelavani>
       entity: "course_lessons",
       entityId: lekceId!,
       action: id ? "lekce.upravena" : "lekce.zalozena",
-      after: { title, kurz: courseId, odemceni: popisPravidla(odemceni) },
+      after: { title, kurz: courseId, odemceni: popisPravidla(odemceni), zdarma: freePreview },
     });
   });
 

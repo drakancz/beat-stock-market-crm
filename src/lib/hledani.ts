@@ -28,8 +28,12 @@ export async function klientiPodleTextu(text: string): Promise<string[]> {
  * Id klientů, jejichž telefon obsahuje číslice z `text` — bez ohledu na
  * mezery (Jakub, 26. 9. 2026). „601234567" najde „+420 601 234 567"
  * a obráceně. Pod tři číslice se nehledá, jinak by „1" našlo skoro všechny.
+ *
+ * Hledá se jen text, který vypadá jako telefon: „fbd21dd1" by jinak hledalo
+ * „211" a našlo cizí číslo (1. 11. 2026, přišel na to test náhledu klienta).
  */
 export async function klientiPodleTelefonu(text: string): Promise<string[]> {
+  if (!/^[\d\s+()./-]+$/.test(text)) return [];
   const cislice = text.replace(/\D/g, "");
   if (cislice.length < 3) return [];
 

@@ -166,8 +166,37 @@ export const POVOLENE_POPIS = "PDF, Word, Excel, PowerPoint, TXT, CSV, obrázky,
 /** Co se dá napsat do `accept` u výběru souboru v prohlížeči. */
 export const PRIPONY = Object.values(POVOLENE_TYPY).map((druh) => `.${druh.pripona}`);
 
-export function jePovoleny(mimeType: string): boolean {
-  return mimeType in POVOLENE_TYPY;
+/**
+ * Materiály ke stažení u lekcí (Jakub, 3. 11. 2026): **jen PDF, Word,
+ * Excel a obrázky** — užší výběr než u příloh. Zvuk a video patří do
+ * lekce jako odkaz na YouTube nebo Vimeo, PowerPoint ať se vyexportuje
+ * do PDF.
+ */
+export const TYPY_MATERIALU: readonly string[] = [
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel",
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+];
+export const MATERIALY_POPIS = "PDF, Word, Excel a obrázky";
+
+/** Typy, které se smí nahrát k danému druhu záznamu. */
+export function povoleneTypyPro(ownerType: string): readonly string[] {
+  return ownerType === "LEKCE" ? TYPY_MATERIALU : Object.keys(POVOLENE_TYPY);
+}
+
+export function popisTypuPro(ownerType: string): string {
+  return ownerType === "LEKCE" ? MATERIALY_POPIS : POVOLENE_POPIS;
+}
+
+export function jePovoleny(mimeType: string, ownerType?: string): boolean {
+  if (!(mimeType in POVOLENE_TYPY)) return false;
+  return ownerType === undefined || povoleneTypyPro(ownerType).includes(mimeType);
 }
 
 /**

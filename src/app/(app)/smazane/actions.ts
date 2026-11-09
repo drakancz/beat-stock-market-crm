@@ -300,6 +300,8 @@ export async function smazZaznamNadobro(druhRaw: string, idRaw: string): Promise
               orders: true,
               // Zprávy do klientské části (3A, 4. 10. 2026) jsou historie.
               zpravy: true,
+              // E-maily z karty (5D, 5. 11. 2026) taky.
+              emaily: true,
               // Účast na webinářích (3C) je taky historie.
               ucastNaWebinarich: true,
               // Rezervace konzultací (5B, 19. 10. 2026) taky.
@@ -318,18 +320,20 @@ export async function smazZaznamNadobro(druhRaw: string, idRaw: string): Promise
         };
       }
 
-      const { tasks, activities, orders, zpravy, ucastNaWebinarich, rezervace } = klient._count;
+      const { tasks, activities, orders, zpravy, emaily, ucastNaWebinarich, rezervace } =
+        klient._count;
       if (
         tasks > 0 ||
         activities > 0 ||
         orders > 0 ||
         zpravy > 0 ||
+        emaily > 0 ||
         ucastNaWebinarich > 0 ||
         rezervace > 0
       ) {
         return {
           ok: false,
-          chyba: `${klient.name} má v systému historii (objednávky, úkoly, zprávy, účast na webinářích nebo rezervace konzultací). Nadobro smazat nejde — v koši zůstat může.`,
+          chyba: `${klient.name} má v systému historii (objednávky, úkoly, zprávy, e-maily, účast na webinářích nebo rezervace konzultací). Nadobro smazat nejde — v koši zůstat může.`,
         };
       }
 

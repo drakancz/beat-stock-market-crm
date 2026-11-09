@@ -26,26 +26,39 @@ export function PrilohyDialog({
   pocet,
   popis,
   children,
+  nadpis = "Přílohy",
+  tlacitko,
+  maly = false,
 }: {
   pocet: number;
   popis: string;
   children: ReactNode;
+  /** Nadpis okna — u lekce „Materiály: název lekce“. */
+  nadpis?: string;
+  /** Text tlačítka bez počtu; výchozí je nadpis. */
+  tlacitko?: string;
+  /** Malé tlačítko do řádku (u lekce v detailu kurzu). */
+  maly?: boolean;
 }) {
   const [otevreno, setOtevreno] = useState(false);
 
   return (
     <>
-      <Button variant="outline" onClick={() => setOtevreno(true)}>
+      <Button
+        variant={maly ? "ghost" : "outline"}
+        size={maly ? "sm" : "default"}
+        onClick={() => setOtevreno(true)}
+      >
         <Paperclip />
-        Přílohy ({pocet})
+        {tlacitko ?? nadpis} ({pocet})
       </Button>
 
       <Dialog open={otevreno} onOpenChange={setOtevreno}>
         <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2 break-words">
               <Paperclip className="text-muted-foreground size-4 shrink-0" aria-hidden />
-              Přílohy
+              {nadpis}
             </DialogTitle>
             <DialogDescription>{popis}</DialogDescription>
           </DialogHeader>

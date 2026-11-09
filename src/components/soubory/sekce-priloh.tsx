@@ -47,13 +47,17 @@ export async function SekcePriloh({
     smiNahravat(viewer, typ, id),
   ]);
 
+  // Materiály u lekcí jen do soukromého S3 (R2) — UploadThing má veřejné
+  // adresy a placený obsah kurzu tam nepatří (Jakub, 3. 11. 2026).
+  const uloziste = kamNahravat();
+
   const obsah = (
     <Prilohy
       typ={typ}
       id={id}
       soubory={soubory}
       smiNahravat={muzeNahravat}
-      uloziste={kamNahravat()}
+      uloziste={typ === "LEKCE" && uloziste !== "S3" ? null : uloziste}
       ukazka={jeUkazka()}
       // Free tarif úložiště neumí soubory uzamknout (security.md).
       // U klienta se to říká důrazněji — jsou to údaje někoho, kdo

@@ -311,6 +311,25 @@ export async function naplnZakladniData(prisma: PrismaClient) {
     });
   }
 
+  // --- Šablony e-mailů z karty klienta (5D, 5. 11. 2026) ----------------
+  const sablonyEmailu = [
+    {
+      id: "sablona-prodlouzeni",
+      name: "Připomínka prodloužení",
+      subject: "Vaše členství brzy končí",
+      body: "Dobrý den,\n\nvaše členství v Klubu BSM brzy končí. Pokud chcete pokračovat, prodloužení najdete v klientské části v sekci Koupit.\n\nS jakýmkoli dotazem stačí odpovědět na tento e-mail.",
+    },
+    {
+      id: "sablona-uvitani",
+      name: "Uvítání nového člena",
+      subject: "Vítejte v Klubu BSM, {jmeno}",
+      body: "Dobrý den,\n\nvítejte mezi členy Klubu BSM. V klientské části najdete kurzy, webináře a materiály ke stažení.\n\nTěšíme se na spolupráci.",
+    },
+  ];
+  for (const { id, ...sablona } of sablonyEmailu) {
+    await prisma.emailTemplate.upsert({ where: { id }, update: {}, create: { id, ...sablona } });
+  }
+
   return {
     uzivatele: { petra, marek, admin },
     klienti: { novak, maresova, benes },

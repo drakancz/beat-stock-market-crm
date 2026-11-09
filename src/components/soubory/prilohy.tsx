@@ -25,8 +25,9 @@ import {
   LIMIT_BAJTU,
   LIMIT_POPIS_LIDSKY,
   MAX_POCET,
-  POVOLENE_POPIS,
-  PRIPONY,
+  POVOLENE_TYPY,
+  popisTypuPro,
+  povoleneTypyPro,
 } from "@/lib/soubory-typy";
 import { useUploadThing } from "@/lib/uploadthing-klient";
 
@@ -209,21 +210,24 @@ export function Prilohy({
       return;
     }
 
-    const nepovoleny = soubory.find((soubor) => !jePovoleny(soubor.type));
+    const nepovoleny = soubory.find((soubor) => !jePovoleny(soubor.type, typ));
     if (nepovoleny) {
-      toast.error(`Tenhle typ souboru nahrát nejde. Povolené jsou ${POVOLENE_POPIS}.`);
+      toast.error(`Tenhle typ souboru nahrát nejde. Povolené jsou ${popisTypuPro(typ)}.`);
       return;
     }
 
     if (uloziste === "S3") void nahrajDoS3(soubory);
-    else void startUpload(soubory, { typ, id });
+    // Materiál u lekce k UploadThingu nikdy (veřejné adresy) — sem se
+    // nedostane, SekcePriloh mu bez S3 nahrávání vypne.
+    else if (typ !== "LEKCE") void startUpload(soubory, { typ, id });
   }
 
   const isUploading = nahravaDoS3 || nahravaKUploadThingu;
 
   return (
     <div className="space-y-4">
-      {uloziste !== "S3" && (
+      {/* Materiály u lekcí jdou jen do S3, varování o UploadThingu se jich netýká. */}
+      {uloziste !== "S3" && typ !== "LEKCE" && (
         <Alert variant={varovani === "klient" ? "destructive" : "default"}>
           <TriangleAlert />
           <AlertDescription className="text-xs leading-relaxed">
@@ -325,7 +329,9 @@ export function Prilohy({
               ref={vyber}
               type="file"
               multiple
-              accept={PRIPONY.join(",")}
+              accept={povoleneTypyPro(typ)
+                .map((mime) => `.${POVOLENE_TYPY[mime]!.pripona}`)
+                .join(",")}
               className="hidden"
               onChange={(udalost) => {
                 zkusNahrat(udalost.target.files);
@@ -344,7 +350,7 @@ export function Prilohy({
             </Button>
             <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
               Nebo sem soubor přetáhni. Nejvýš {LIMIT_POPIS_LIDSKY} na soubor, {MAX_POCET} souborů
-              naráz. Povolené jsou {POVOLENE_POPIS}.
+              naráz. Povolené jsou {popisTypuPro(typ)}.
             </p>
           </div>
         ) : (

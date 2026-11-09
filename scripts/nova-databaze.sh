@@ -15,6 +15,12 @@
 #      repozitář). **Heslo se nevypisuje do terminálu** ani nepíše do
 #      příkazu (security.md, pravidlo 5).
 #
+# Rozšíření, která smí zapnout jen správce serveru (Jakub, 4. 11. 2026 —
+# asistent nad dokumenty potřebuje pgvector): -e ROZSIRENI=vector.
+# U databáze projektu, která už existuje, zapne jen rozšíření a nic jiného
+# nemění:
+#   docker compose --profile databaze run --rm -e PROJEKT=asistent -e ROZSIRENI=vector nova-databaze
+#
 # Kam se připojuje: SPRAVCE_DATABASE_URL z .env — správcovský účet serveru
 # (na Railway DATABASE_PUBLIC_URL služby Postgres, uživatel postgres).
 # Veřejný přístup na Railway zapni jen na dobu běhu, pak zase vypni
@@ -42,10 +48,34 @@ case "$PROJEKT" in
     ;;
 esac
 
+ROZSIRENI="${ROZSIRENI:-}"
+# Jen rozšíření z výčtu — název jde do SQL.
+case "$ROZSIRENI" in
+  "" | vector) ;;
+  *)
+    echo "ROZSIRENI smí být jen „vector“ (pgvector)." >&2
+    exit 1
+    ;;
+esac
+
 SPRAVCE="$(stripPrismaParams "$SPRAVCE_DATABASE_URL")"
+# Správce přímo v databázi projektu — v adrese se vymění jen její název.
+SPRAVCE_PROJEKTU="$(printf '%s' "$SPRAVCE" | sed -E "s#/[^/?]+([?]|\$)#/$PROJEKT\1#")"
+
+zapni_rozsireni() {
+  [ -n "$ROZSIRENI" ] || return 0
+  echo "  zapínám rozšíření „$ROZSIRENI“ v databázi „$PROJEKT“…" >&2
+  psql "$SPRAVCE_PROJEKTU" -v ON_ERROR_STOP=1 -q -c "CREATE EXTENSION IF NOT EXISTS $ROZSIRENI"
+}
 
 existuje="$(psql "$SPRAVCE" -tAc "SELECT 1 FROM pg_roles WHERE rolname = '$PROJEKT' UNION SELECT 1 FROM pg_database WHERE datname = '$PROJEKT'")"
 if [ -n "$existuje" ]; then
+  db_existuje="$(psql "$SPRAVCE" -tAc "SELECT 1 FROM pg_database WHERE datname = '$PROJEKT'")"
+  if [ -n "$ROZSIRENI" ] && [ -n "$db_existuje" ]; then
+    zapni_rozsireni
+    echo "Hotovo. Databáze „$PROJEKT“ už na serveru byla, zapnuté je jen rozšíření „$ROZSIRENI“." >&2
+    exit 0
+  fi
   echo "Uživatel nebo databáze „$PROJEKT“ už na serveru je. Nic neměním." >&2
   exit 1
 fi
@@ -68,12 +98,11 @@ SELECT format('REVOKE ALL ON DATABASE %I FROM PUBLIC', datname)
 SQL
 
 # Ve vlastní databázi patří projektu i schéma public (migrace v něm tvoří
-# tabulky). Správce se připojí přímo do nové databáze — v adrese se vymění
-# jen její název.
-psql "$(printf '%s' "$SPRAVCE" | sed -E "s#/[^/?]+([?]|\$)#/$PROJEKT\1#")" \
-  -v ON_ERROR_STOP=1 -q -v projekt="$PROJEKT" <<'SQL'
+# tabulky). Správce se připojí přímo do nové databáze.
+psql "$SPRAVCE_PROJEKTU" -v ON_ERROR_STOP=1 -q -v projekt="$PROJEKT" <<'SQL'
 SELECT format('ALTER SCHEMA public OWNER TO %I', :'projekt') \gexec
 SQL
+zapni_rozsireni
 
 # Adresa nového projektu: stejný server, jiný uživatel a databáze.
 vlastni() {

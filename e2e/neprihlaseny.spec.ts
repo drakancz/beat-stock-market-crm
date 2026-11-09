@@ -87,3 +87,51 @@ test.describe("nepřihlášený návštěvník", () => {
     expect([401, 503]).toContain(odpoved.status());
   });
 });
+
+/**
+ * Stará adresa od Railway přehodí stránky na vlastní doménu (4. 11. 2026,
+ * `src/proxy.ts`). V testech je hlavní adresa `AUTH_URL` = localhost:3100,
+ * stará adresa se podstrčí hlavičkou `X-Forwarded-Host` jako za proxy.
+ */
+test.describe("přesměrování ze staré adresy", () => {
+  const STARA = { "x-forwarded-host": "crm-ukazka.up.railway.app" };
+
+  test("stránka ze staré adresy jde na hlavní i s cestou a parametry", async ({
+    request,
+    baseURL,
+  }) => {
+    const odpoved = await request.get("/prihlaseni?pokracovat=%2Fklienti", {
+      headers: STARA,
+      maxRedirects: 0,
+    });
+    expect(odpoved.status()).toBe(308);
+    // Na stejný server (v testu je hlavní adresa testovací server) dává
+    // Next.js jen cestu; na Railway je cíl jiný server a adresa celá.
+    expect(new URL(odpoved.headers()["location"], baseURL).href).toBe(
+      `${baseURL}/prihlaseni?pokracovat=%2Fklienti`,
+    );
+  });
+
+  test("klientská část ze staré adresy taky", async ({ request, baseURL }) => {
+    const odpoved = await request.get("/ucet/prihlaseni", { headers: STARA, maxRedirects: 0 });
+    expect(odpoved.status()).toBe(308);
+    expect(new URL(odpoved.headers()["location"], baseURL).href).toBe(`${baseURL}/ucet/prihlaseni`);
+  });
+
+  test("API ze staré adresy se nepřesměrovává (klíč v hlavičce by se ztratil)", async ({
+    request,
+  }) => {
+    const odpoved = await request.get("/api/objednavky/cenik", { headers: STARA, maxRedirects: 0 });
+    expect(odpoved.status()).not.toBe(308);
+  });
+
+  test("jiná adresa (kontrola stavu, vnitřní síť) se nepřesměrovává", async ({ request }) => {
+    for (const hostitel of ["healthcheck.railway.app", "crm-beatstockmarket.railway.internal"]) {
+      const odpoved = await request.get("/prihlaseni", {
+        headers: { "x-forwarded-host": hostitel },
+        maxRedirects: 0,
+      });
+      expect(odpoved.status()).toBe(200);
+    }
+  });
+});

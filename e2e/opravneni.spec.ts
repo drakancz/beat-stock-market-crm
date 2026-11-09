@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { dotaz, menu, stavPrihlaseni, type RoleTestu } from "./pomocne";
+import { dotaz, menu, pripona, stavPrihlaseni, type RoleTestu } from "./pomocne";
+import { lekceKurzu, zalozKurz, zalozProdukt } from "./pomocne-klient";
 
 /**
  * Oprávnění podle rolí (CLAUDE.md → Role a oprávnění).
@@ -43,6 +44,8 @@ const JEN_ADMIN = [
   "/nastaveni/webhooky",
   // Google Kalendář pro konzultace (20. 10. 2026).
   "/nastaveni/kalendar",
+  // Šablony e-mailů z karty klienta (5D, 5. 11. 2026).
+  "/nastaveni/sablony",
   "/asistent",
   // Doporučitelé a odměny (5A, 15. 10. 2026).
   "/produkty/doporucitele",
@@ -251,5 +254,26 @@ test.describe("viditelnost klientů", () => {
       await expect(page.getByRole("heading", { name: CIZI_KLIENT })).toBeVisible();
       await expect(page.getByRole("main").getByText("Obchodník", { exact: true })).toHaveCount(0);
     });
+  });
+});
+
+// Materiály ke stažení u lekcí (Jakub, 3. 11. 2026): nahrává jen
+// administrátor. Celý průchod je v `materialy.spec.ts`.
+test.describe("uživatel: materiály u lekcí nenahraje", () => {
+  test.use({ storageState: stavPrihlaseni("uzivatel") });
+
+  test("nahrání materiálu k lekci vrátí 404", async ({ page }) => {
+    const produkt = await zalozProdukt(`E2E Oprávnění materiály ${pripona()}`);
+    const [lekce] = await lekceKurzu(
+      await zalozKurz(produkt, `Kurz oprávnění ${pripona()}`, ["Lekce"]),
+    );
+    const odpoved = await page.request.post(
+      `/api/soubory?typ=LEKCE&id=${encodeURIComponent(lekce!)}`,
+      {
+        headers: { "Content-Type": "application/pdf", "X-Nazev": "material.pdf" },
+        data: Buffer.from("%PDF-1.4\n% opravneni\n%%EOF\n"),
+      },
+    );
+    expect(odpoved.status()).toBe(404);
   });
 });

@@ -45,6 +45,8 @@ const KLIENT_VEREJNE = [
   "/ucet/obchodni-podminky",
   // Návrat z platební brány (19. 10. 2026) — jen číslo objednávky a stav.
   "/ucet/platba",
+  // Minikurz zdarma (Platforma B, Jakub 5. 11. 2026) — jen lekce zdarma.
+  "/ucet/kurz-zdarma",
 ];
 const COOKIE_KLIENTA = ["bsm-klient", "__Host-bsm-klient"];
 
@@ -77,7 +79,51 @@ function zacina(pathname: string, cesty: string[]): boolean {
   return cesty.some((cesta) => pathname === cesta || pathname.startsWith(`${cesta}/`));
 }
 
+/**
+ * Přesměrování ze staré adresy od Railway na vlastní doménu (4. 11. 2026).
+ *
+ * Od chvíle, kdy `AUTH_URL` ukazuje na `crm.jakubkostan.cz`, by na staré
+ * `…up.railway.app` nefungovalo přihlášení (Auth.js odkazuje na `AUTH_URL`)
+ * ani nahrávání a export (kontrola `Origin`, `src/lib/puvod.ts`). Odkazy na
+ * starou adresu přitom visí na LinkedInu a v README — proto se stránky
+ * přehodí na hlavní adresu i s cestou a parametry.
+ *
+ * - Jen adresy `*.up.railway.app`. Kontrola stavu služby od Railway ani
+ *   vnitřní síť (`*.railway.internal`) se nepřesměrovávají.
+ * - Jen stránky — `/api` je v `matcher` vynechané, takže plánovač ani
+ *   Landing Page nepřijdou o hlavičku s klíčem (při přesměrování na jinou
+ *   adresu ji prohlížeč i `fetch` zahodí).
+ * - Dokud `AUTH_URL` sama ukazuje na `…railway.app`, nic se neděje.
+ */
+function presmerovaniNaHlavniAdresu(request: NextRequest): NextResponse | null {
+  const hlavni = process.env.AUTH_URL;
+  if (!hlavni) return null;
+
+  let hlavniAdresa: URL;
+  try {
+    hlavniAdresa = new URL(hlavni);
+  } catch {
+    return null;
+  }
+
+  // Za proxy Railway nese skutečnou adresu hlavička, `request.url` zná jen
+  // adresu, na které server poslouchá (viz `src/lib/puvod.ts`).
+  const hostitel = (request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "")
+    .split(",")[0]
+    .trim()
+    .toLowerCase()
+    .replace(/:\d+$/, "");
+
+  if (!hostitel.endsWith(".up.railway.app") || hostitel === hlavniAdresa.hostname) return null;
+
+  const cil = new URL(request.nextUrl.pathname + request.nextUrl.search, hlavniAdresa.origin);
+  return NextResponse.redirect(cil, 308);
+}
+
 export function proxy(request: NextRequest) {
+  const presmerovani = presmerovaniNaHlavniAdresu(request);
+  if (presmerovani) return presmerovani;
+
   const { pathname } = request.nextUrl;
 
   if (zacina(pathname, [KLIENTSKA_CAST])) {

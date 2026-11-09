@@ -40,6 +40,9 @@ export type DruhChyby =
   | "email.upozorneni-klienta"
   /// Neodešlo samotné upozornění administrátorovi na chyby.
   | "email.upozorneni"
+  /// Osobní e-mail z karty klienta (5D, 5. 11. 2026). Neopakuje se odtud —
+  /// kolega ho na kartě vidí jako neodeslaný a pošle znovu sám.
+  | "email.osobni"
   | "lead.odmitnut"
   /// Objednávka z Landing Page, kterou CRM nepřijalo.
   | "objednavka.odmitnuta"
@@ -64,6 +67,7 @@ export const POPIS_DRUHU_CHYBY: Record<DruhChyby, string> = {
   "email.obnova-klienta": "E-mail — obnova hesla klienta",
   "email.upozorneni-klienta": "E-mail — upozornění klientovi",
   "email.upozorneni": "E-mail — upozornění na chyby",
+  "email.osobni": "E-mail — osobní zpráva z karty klienta",
   "lead.odmitnut": "Lead z webu — odmítnutý",
   "objednavka.odmitnuta": "Objednávka z Landing Page — odmítnutá",
   "webhook.odeslani": "Webhook — nedoručená zpráva",
@@ -89,6 +93,7 @@ export const SKUPINA_CHYB: Record<SkupinaChyb, DruhChyby[]> = {
     "email.obnova-klienta",
     "email.upozorneni-klienta",
     "email.upozorneni",
+    "email.osobni",
   ],
   lead: ["lead.odmitnut"],
   objednavka: ["objednavka.odmitnuta"],
@@ -107,6 +112,7 @@ export function jdeZnovuSpustit(druh: string): boolean {
     "objednavka.odmitnuta",
     "email.upozorneni",
     "email.upozorneni-klienta",
+    "email.osobni",
     "smartemailing.webhook",
     "webhook.odeslani",
     "kalendar.zapis",

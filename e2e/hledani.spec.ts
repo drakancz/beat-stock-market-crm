@@ -78,6 +78,33 @@ test.describe("hledání bez diakritiky", () => {
     await expect(page.getByText("Nikdo neodpovídá zadání.")).toBeVisible();
   });
 
+  test("klienti: telefon se hledá jen podle textu, který jako telefon vypadá", async ({ page }) => {
+    const znacka = pripona();
+    const jmeno = `Telefon Hledani ${znacka}`;
+    const cislice = String(100_000_000 + Math.floor(Math.random() * 900_000_000));
+    const [zdroj] = await dotaz<{ id: string }>(`SELECT "id" FROM "client_sources" LIMIT 1`);
+    await dotaz(
+      `INSERT INTO "clients" ("id", "name", "email", "phone", "sourceId", "updatedAt")
+       VALUES (gen_random_uuid()::text, $1, $2, $3, $4, now())`,
+      [
+        jmeno,
+        `telefon-${znacka}@example.test`,
+        `+420 ${cislice.slice(0, 3)} ${cislice.slice(3, 6)} ${cislice.slice(6)}`,
+        zdroj!.id,
+      ],
+    );
+
+    await otevriAzUvidis(
+      page,
+      `/klienti?hledat=${cislice}`,
+      page.getByRole("link", { name: jmeno }),
+    );
+
+    // Číslice uvnitř slova telefon nejsou (přípona „fbd21dd1“ našla cizí číslo).
+    await page.goto(`/klienti?hledat=x${cislice}y`);
+    await expect(page.getByText("Nikdo neodpovídá zadání.")).toBeVisible();
+  });
+
   test("objednávky: podle klienta i produktu bez háčků", async ({ page }) => {
     const { znacka, cislo } = await pripravData();
     const radek = page.getByRole("row").filter({ hasText: cislo });

@@ -7,7 +7,6 @@ import {
   CopyCheck,
   Download,
   History,
-  Mail,
   MessageSquare,
   NotebookPen,
   ReceiptText,
@@ -57,6 +56,7 @@ import { KlientDialog } from "../klient-dialog";
 import { SmazaniKlienta } from "../smazani-klienta";
 
 import { CasovaOsa } from "./casova-osa";
+import { EmailKlientovi } from "./email-klientovi";
 import { HlidaniSmartemailingu } from "./hlidani-smartemailingu";
 import { KlientskaCast } from "./klientska-cast";
 import { StitkyKlienta } from "./stitky-klienta";
@@ -113,6 +113,8 @@ export default async function KlientPage({ params }: PageProps<"/klienti/[id]">)
     duplicity,
     ucet,
     zpravy,
+    sablonyEmailu,
+    emaily,
   ] = await Promise.all([
     // Rozsah role hlídá `nactiObjednavky()` znovu — na cizí objednávku
     // se přes adresu klienta nedá dostat.
@@ -152,6 +154,26 @@ export default async function KlientPage({ params }: PageProps<"/klienti/[id]">)
         delivery: true,
         createdAt: true,
         readAt: true,
+        author: { select: { name: true } },
+      },
+    }),
+    // E-mail z karty (5D, 5. 11. 2026): šablony použije každý přihlášený,
+    // historii vidí každý, kdo vidí kartu.
+    db.emailTemplate.findMany({
+      where: { deletedAt: null },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, subject: true, body: true },
+    }),
+    db.clientEmail.findMany({
+      where: { clientId: klient.id },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      select: {
+        id: true,
+        subject: true,
+        body: true,
+        status: true,
+        createdAt: true,
         author: { select: { name: true } },
       },
     }),
@@ -257,15 +279,26 @@ export default async function KlientPage({ params }: PageProps<"/klienti/[id]">)
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {/*
-           * Posílání e-mailů zatím nikam nevede — přijde ve fázi 2. Do té
-           * doby je tlačítko znecitlivěné, aby nevypadalo jako hotová
-           * funkce. Do 23. 9. 2026 se jmenovalo Napsat.
-           */}
-          <Button variant="outline" disabled title="Posílání e-mailů přímo z karty se připravuje.">
-            <Mail />
-            Poslat email
-          </Button>
+          {/* E-mail z karty (5D, Jakub 5. 11. 2026): poslat smí každý
+              přihlášený, i bez souhlasu s marketingem (okno upozorní).
+              Šablony spravuje administrátor v Nastavení. */}
+          <EmailKlientovi
+            klient={{
+              id: klient.id,
+              name: klient.name,
+              email: klient.email,
+              souhlasMarketing: klient.consentMarketingAt !== null,
+            }}
+            sablony={sablonyEmailu}
+            emaily={emaily.map((email) => ({
+              id: email.id,
+              predmet: email.subject,
+              text: email.body,
+              autor: email.author?.name ?? null,
+              kdy: formatDatumCas(email.createdAt),
+              stav: email.status === "ODESLANO" ? "ODESLANO" : "NEODESLANO",
+            }))}
+          />
 
           {/* Objednávky klienta v okně (Jakub, 23. 9. 2026) — nahradily
               tlačítko Zapsat hovor i záložku Objednávky. Jen čtení; stav

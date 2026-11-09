@@ -14,6 +14,8 @@ import { dnesniZacatek } from "@/lib/platnost";
  * - **Členskou sekci** vidí, kdo má **právě platné** kterékoli členství
  *   (`product_validities`, konec dnes nebo později).
  * - **Webinář** podle `audience`: všichni s účtem / členové / kupci kurzu.
+ * - **Lekci zdarma** (Platforma B) vidí kdokoli, i bez přihlášení —
+ *   `LEKCE_ZDARMA`, `KURZ_S_UKAZKOU`.
  *
  * Koncepty (nezveřejněné kurzy a články) a smazaný obsah klient nevidí
  * nikdy.
@@ -36,6 +38,25 @@ export function kurzyKlienta(clientId: string): Prisma.CourseWhereInput {
     product: zaplacenyProduktKlienta(clientId),
   };
 }
+
+/**
+ * Ukázková lekce zdarma (Platforma B, Jakub 5. 11. 2026) — **pro každého,
+ * i nepřihlášeného**: lekce označená administrátorem, nesmazaná, v kurzu,
+ * který je zveřejněný, nesmazaný a s produktem mimo Smazané. Vydává se
+ * z ní jen text a video (kvíz, materiály ani odškrtnutí ne).
+ */
+export const LEKCE_ZDARMA: Prisma.CourseLessonWhereInput = {
+  freePreview: true,
+  deletedAt: null,
+};
+
+/** Kurz, který má veřejnou ukázku — aspoň jednu lekci zdarma. */
+export const KURZ_S_UKAZKOU: Prisma.CourseWhereInput = {
+  deletedAt: null,
+  publishedAt: { not: null },
+  product: { deletedAt: null },
+  lekce: { some: LEKCE_ZDARMA },
+};
 
 /** Má klient právě platné nějaké členství? */
 export async function maPlatneClenstvi(clientId: string): Promise<boolean> {

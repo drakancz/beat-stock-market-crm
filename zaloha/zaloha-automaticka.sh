@@ -1,9 +1,10 @@
 #!/bin/sh
 # Automatická záloha databáze do úložiště (4. 10. 2026).
 #
-# Na serveru ji každou noc spouští plánovaná služba na Railway
-# (`railway.zaloha.json`, obraz `Dockerfile.zaloha`). Na tomhle počítači
-# se dá vyzkoušet proti vývojové databázi a místnímu S3Mock:
+# Na serveru ji každou noc spouští plánovaná služba na Railway (obraz
+# `zaloha/Dockerfile`, Root Directory `/zaloha`, nastavení ručně
+# v Settings). Na tomhle počítači se dá vyzkoušet proti vývojové databázi
+# a místnímu S3Mock:
 #   docker compose --profile zaloha run --rm zaloha-zkouska
 #
 # Co udělá:
@@ -16,7 +17,10 @@
 #   5. smazání záloh starších než ZALOHY_DRZET_DNU dní (výchozí 30).
 #
 # Proměnné (všechny jen v prostředí, nikdy v příkazu — security.md, pravidlo 5):
-#   ZALOHA_DATABASE_URL         odkud (na Railway odkaz na DATABASE_URL)
+#   ZALOHA_DATABASE_URL         odkud — na Railway odkaz na DATABASE_URL
+#                               **aplikace CRM**, ne služby Postgres: na
+#                               společném serveru jsou i databáze dalších
+#                               projektů a záloha CRM sahá jen na tu svou
 #   ZALOHY_S3_ENDPOINT          adresa úložiště (R2: https://<účet>.eu.r2.cloudflarestorage.com)
 #   ZALOHY_S3_BUCKET            bucket pro zálohy (jiný než pro přílohy)
 #   ZALOHY_S3_ACCESS_KEY_ID     klíč s právem jen k tomuhle bucketu
@@ -45,7 +49,15 @@ case "$DRZET_DNU" in
 esac
 [ "$DRZET_DNU" -ge 7 ] || chyba "ZALOHY_DRZET_DNU musí být aspoň 7 — jinak by šlo smazat všechno."
 
-. /skripty/adresa-databaze.sh
+# Adresa bez parametrů, kterým rozumí jen Prisma (`?schema=public`) —
+# pg_dump by na nich skončil chybou. Stejná funkce jako
+# scripts/adresa-databaze.sh; je tu opsaná, protože obraz vidí jen tuhle
+# složku. Při změně uprav obě.
+stripPrismaParams() {
+  printf '%s' "$1" |
+    sed -E 's#([?&])(schema|connection_limit|pool_timeout|pgbouncer|socket_timeout)=[^&]*#\1#g' |
+    sed -E 's#\?&+#?#g; s#&&+#\&#g; s#[?&]+$##'
+}
 ADRESA=$(stripPrismaParams "$ZALOHA_DATABASE_URL")
 
 # Nástroj aws bere klíče z prostředí, ne z příkazu (nejsou vidět v seznamu

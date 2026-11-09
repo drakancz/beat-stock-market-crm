@@ -325,6 +325,7 @@ services:
       # Postgres. Záměrně ne DATABASE_URL aplikace.
       SPRAVCE_DATABASE_URL: ${SPRAVCE_DATABASE_URL:-}
       PROJEKT: ${PROJEKT:-}
+      ROZSIRENI: ${ROZSIRENI:-} # jen „vector“ (pgvector), viz skript
     entrypoint: ["sh", "/skripty/nova-databaze.sh"]
 
   # Obnova ze zálohy. PŘEPÍŠE cílovou databázi, proto se potvrzuje jejím
@@ -383,13 +384,12 @@ services:
 
   # Automatická záloha (4. 10. 2026) — zkouška celým kolečkem proti
   # vývojové databázi a místnímu S3Mock. Na serveru běží týž obraz
-  # (Dockerfile.zaloha) jako plánovaná služba na Railway. Spouští se výslovně:
+  # (zaloha/Dockerfile) jako plánovaná služba na Railway. Spouští se výslovně:
   #   docker compose --profile zaloha run --rm zaloha-zkouska
   zaloha-zkouska:
     profiles: ["zaloha"]
     build:
-      context: .
-      dockerfile: Dockerfile.zaloha
+      context: ./zaloha
     depends_on:
       db:
         condition: service_healthy
@@ -398,6 +398,7 @@ services:
     volumes:
       # Skripty z disku, ať zkouška běží nad tím, co je v projektu teď.
       - ./scripts:/skripty:ro
+      - ./zaloha:/zaloha:ro
     environment:
       ZALOHA_DATABASE_URL: ${DATABASE_URL}
       ZALOHY_S3_ENDPOINT: http://s3:9090

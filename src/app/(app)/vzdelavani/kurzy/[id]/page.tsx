@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ListOrdered, Lock, Star, Video } from "lucide-react";
+import { ArrowLeft, ExternalLink, ListOrdered, Lock, Star, Video } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
+import { PrilohyDialog } from "@/components/soubory/prilohy-dialog";
+import { SekcePriloh } from "@/components/soubory/sekce-priloh";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +13,7 @@ import { db } from "@/lib/db";
 import { pocet } from "@/lib/mnozne";
 import { idZAdresy } from "@/lib/parametry";
 import { requireViewer } from "@/lib/session";
+import { pocetMaterialu } from "@/lib/soubory";
 import { kurzyBezObsahu } from "@/lib/vzdelavani/crm";
 import { jakoDen } from "@/lib/obdobi";
 import { formatPrumer, nactiHodnoceniLekci, NEJVIC_HVEZD } from "@/lib/vzdelavani/hodnoceni";
@@ -45,6 +48,7 @@ async function nactiKurz(id: string) {
           body: true,
           videoUrl: true,
           ...VYBER_PRAVIDLA,
+          freePreview: true,
           kviz: { select: { questions: true, deletedAt: true } },
         },
       },
@@ -74,7 +78,7 @@ export default async function KurzPage({ params }: PageProps<"/vzdelavani/kurzy/
   if (!kurz) notFound();
 
   const jeAdmin = viewer.role === "ADMINISTRATOR";
-  const [produkty, kupcu, hodnoceni] = await Promise.all([
+  const [produkty, kupcu, hodnoceni, materialu] = await Promise.all([
     jeAdmin ? kurzyBezObsahu(kurz.id) : Promise.resolve([]),
     // Kolik klientů má kurz zaplacený — tolik ho vidí v klientské části.
     db.client.count({
@@ -91,6 +95,8 @@ export default async function KurzPage({ params }: PageProps<"/vzdelavani/kurzy/
     }),
     // Hodnocení lekcí (5C, 18. 10. 2026) — vidí každý přihlášený.
     nactiHodnoceniLekci(kurz.lekce.map((lekce) => lekce.id)),
+    // Materiály ke stažení (3. 11. 2026) — vidí každý, nahrává administrátor.
+    pocetMaterialu(kurz.lekce.map((lekce) => lekce.id)),
   ]);
 
   return (
@@ -114,6 +120,23 @@ export default async function KurzPage({ params }: PageProps<"/vzdelavani/kurzy/
             {kurz.product.name} · zaplacený má {pocet(kupcu, "klient", "klienti", "klientů")}
           </p>
           {kurz.description && <p className="mt-2 max-w-2xl text-sm">{kurz.description}</p>}
+          {/* Minikurz zdarma (Platforma B, 5. 11. 2026): odkaz na veřejnou
+              ukázku, ať ho jde dát na web. Funguje jen u zveřejněného kurzu
+              s aspoň jednou lekcí zdarma (KURZ_S_UKAZKOU). */}
+          {kurz.publishedAt && kurz.lekce.some((lekce) => lekce.freePreview) && (
+            <p className="mt-2 text-sm">
+              Veřejná ukázka zdarma:{" "}
+              <a
+                href={`/ucet/kurz-zdarma/${kurz.id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-primary inline-flex min-h-6 items-center gap-1 underline-offset-4 hover:underline"
+              >
+                /ucet/kurz-zdarma/{kurz.id}
+                <ExternalLink className="size-3.5" aria-hidden />
+              </a>
+            </p>
+          )}
         </div>
         {jeAdmin && (
           <div className="flex flex-wrap gap-2">
@@ -175,7 +198,10 @@ export default async function KurzPage({ params }: PageProps<"/vzdelavani/kurzy/
                       {poradi + 1}.
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium">{lekce.title}</p>
+                      <p className="flex flex-wrap items-center gap-2 font-medium">
+                        {lekce.title}
+                        {lekce.freePreview && <Badge variant="outline">zdarma</Badge>}
+                      </p>
                       <p className="text-muted-foreground line-clamp-1 text-xs">
                         {lekce.videoUrl && (
                           <Video
@@ -203,6 +229,18 @@ export default async function KurzPage({ params }: PageProps<"/vzdelavani/kurzy/
                           : "Zatím bez hodnocení"}
                       </p>
                     </div>
+                    {/* Materiály ke stažení (Jakub, 3. 11. 2026): stáhne každý,
+                        nahrává a maže jen administrátor — rozhoduje SekcePriloh
+                        a server, tlačítko nic nepovoluje. */}
+                    <PrilohyDialog
+                      maly
+                      pocet={materialu.get(lekce.id) ?? 0}
+                      nadpis={`Materiály: ${lekce.title}`}
+                      tlacitko="Materiály"
+                      popis="Soubory ke stažení, které uvidí klienti se zaplaceným kurzem u otevřené lekce. Povolené jsou PDF, Word, Excel a obrázky."
+                    >
+                      <SekcePriloh typ="LEKCE" id={lekce.id} bezRamu />
+                    </PrilohyDialog>
                     {!jeAdmin && otazky && (
                       <KvizDialog lekceId={lekce.id} lekce={lekce.title} otazky={otazky} jenCteni />
                     )}
@@ -236,6 +274,7 @@ export default async function KurzPage({ params }: PageProps<"/vzdelavani/kurzy/
                               od: lekce.unlockOn ? jakoDen(lekce.unlockOn) : "",
                               poPredchozi: lekce.unlockAfterPrevious,
                             },
+                            zdarma: lekce.freePreview,
                           }}
                           ulozit={ulozLekci}
                         />

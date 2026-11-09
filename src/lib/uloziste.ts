@@ -80,6 +80,15 @@ export function kamNahravat(): AttachmentStorage | null {
   return null;
 }
 
+/**
+ * Je nastavené soukromé úložiště S3 — bez ohledu na ukázku. Potřebuje ho
+ * noční obnova ukázky, která tam sama ukládá vymyšlené materiály lekcí
+ * (`kamNahravat()` je v ukázce schválně `null`).
+ */
+export function jeS3Nastavene(): boolean {
+  return nastaveniS3() !== null;
+}
+
 /** Umí server sáhnout na úložiště, kde soubor leží? */
 export function jeUlozisteDostupne(uloziste: AttachmentStorage): boolean {
   return uloziste === "S3" ? nastaveniS3() !== null : jeUploadThingNastaveny();

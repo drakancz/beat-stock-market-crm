@@ -73,7 +73,21 @@ export async function smiVidet(
       });
       return klient !== null;
     }
+    case "LEKCE":
+      // Materiály u lekce (Jakub, 3. 11. 2026): v CRM je vidí a stáhne
+      // každý přihlášený — stejně jako samotnou lekci. Klient je dostává
+      // jinudy (`/ucet/materialy/[id]`, přes `nactiLekciKlienta()`).
+      return jeLekce(ownerId);
   }
+}
+
+/** Lekce, která v CRM opravdu je — ne smazaná ani ve smazaném kurzu. */
+async function jeLekce(lessonId: string): Promise<boolean> {
+  const lekce = await db.courseLesson.findFirst({
+    where: { id: lessonId, deletedAt: null, course: { deletedAt: null } },
+    select: { id: true },
+  });
+  return lekce !== null;
 }
 
 /**
@@ -86,15 +100,59 @@ export async function smiNahravat(
   ownerType: AttachmentOwner,
   ownerId: string,
 ): Promise<boolean> {
+  // Materiály u lekcí nahrává jen administrátor (Jakub, 3. 11. 2026) —
+  // jsou obsahem kurzu jako lekce sama.
+  if (ownerType === "LEKCE" && viewer.role !== "ADMINISTRATOR") return false;
   return smiVidet(viewer, ownerType, ownerId);
 }
 
 /**
  * Kdo smí soubor **smazat**: ten, kdo ho nahrál, a administrátor.
- * Stejné pravidlo jako u zápisu hovoru.
+ * Stejné pravidlo jako u zápisu hovoru. Materiál u lekce jen
+ * administrátor (Jakub, 3. 11. 2026) — i když ho nahrál někdo, kdo
+ * administrátorem mezitím být přestal.
  */
-export function smiSmazat(viewer: Viewer, soubor: { uploadedById: string }): boolean {
-  return viewer.role === "ADMINISTRATOR" || soubor.uploadedById === viewer.id;
+export function smiSmazat(
+  viewer: Viewer,
+  soubor: { uploadedById: string; ownerType: AttachmentOwner },
+): boolean {
+  if (viewer.role === "ADMINISTRATOR") return true;
+  return soubor.ownerType !== "LEKCE" && soubor.uploadedById === viewer.id;
+}
+
+/** Materiál ke stažení, jak ho vidí klient — bez toho, kdo ho nahrál. */
+export interface MaterialLekce {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+}
+
+/**
+ * Materiály u lekce pro klientskou část (Jakub, 3. 11. 2026).
+ *
+ * **Přístup k lekci si volající ověřuje sám přes `nactiLekciKlienta()`**
+ * (zaplacený kurz, odemčená lekce) — tahle funkce jen čte. Jen soubory
+ * v soukromém úložišti S3; UploadThing má veřejné adresy a placený obsah
+ * tam nepatří.
+ */
+export async function nactiMaterialyLekce(lessonId: string): Promise<MaterialLekce[]> {
+  return db.attachment.findMany({
+    where: { ownerType: "LEKCE", ownerId: lessonId, storage: "S3", deletedAt: null },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, name: true, mimeType: true, size: true },
+  });
+}
+
+/** Kolik materiálů má která lekce — pro tlačítko v CRM. */
+export async function pocetMaterialu(lessonIds: string[]): Promise<Map<string, number>> {
+  if (lessonIds.length === 0) return new Map();
+  const skupiny = await db.attachment.groupBy({
+    by: ["ownerId"],
+    where: { ownerType: "LEKCE", ownerId: { in: lessonIds }, deletedAt: null },
+    _count: { _all: true },
+  });
+  return new Map(skupiny.map((skupina) => [skupina.ownerId, skupina._count._all]));
 }
 
 export interface SouborKZobrazeni {
@@ -142,6 +200,6 @@ export async function nactiSoubory(
     createdAt: soubor.createdAt,
     uploadedById: soubor.uploadedById,
     uploadedByName: soubor.uploadedBy.name,
-    smiSmazat: smiSmazat(viewer, soubor),
+    smiSmazat: smiSmazat(viewer, { uploadedById: soubor.uploadedById, ownerType }),
   }));
 }

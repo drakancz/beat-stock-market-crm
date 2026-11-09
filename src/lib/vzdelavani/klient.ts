@@ -6,7 +6,7 @@ import { nactiVysledkyKvizu } from "./kvizy";
 import { procZamcena, prvniZaplaceniKurzu, VYBER_PRAVIDLA } from "./odemykani";
 import { nactiOdznaky } from "./odznaky";
 
-import { kurzyKlienta } from "./pristup";
+import { kurzyKlienta, LEKCE_ZDARMA } from "./pristup";
 
 /**
  * Kurzy v klientské části (krok 3C, 4. 10. 2026). `clientId` vždy
@@ -50,6 +50,8 @@ export async function nactiKurzyKlienta(clientId: string) {
         title: true,
         description: true,
         product: { select: { id: true, url: true, active: true } },
+        // Minikurz zdarma (Platforma B, 5. 11. 2026) — má veřejnou ukázku?
+        lekce: { where: LEKCE_ZDARMA, take: 1, select: { id: true } },
       },
     }),
   ]);
@@ -69,6 +71,7 @@ export async function nactiKurzyKlienta(clientId: string) {
       url: kurz.product.url,
       // Koupit v klientské části (20. 10. 2026) — jen prodávaný produkt.
       productId: kurz.product.active ? kurz.product.id : null,
+      ukazkaZdarma: kurz.lekce.length > 0,
     })),
   };
 }

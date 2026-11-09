@@ -87,10 +87,12 @@ function radekFirmy(firma: FirmaVEmailu): string {
 interface Obsah {
   /** Krátký text, který se ukáže v seznamu zpráv vedle předmětu. */
   nahled: string;
+  /** Nadpis nad textem. Osobní e-mail z karty ho nemá (prázdný text). */
   nadpis: string;
-  /** Odstavce těla. Prosté věty, bez HTML. */
+  /** Odstavce těla. Prosté věty, bez HTML; zalomení řádku se zachová. */
   odstavce: string[];
-  tlacitko: { popisek: string; odkaz: string };
+  /** Osobní e-mail z karty (5D) tlačítko nemá. */
+  tlacitko?: { popisek: string; odkaz: string };
   /** Vysvětlení pod tlačítkem — platnost odkazu a podobně. */
   poznamka?: string;
   /** Poslední věta, obvykle „když jsi o nic nežádal…". */
@@ -100,10 +102,16 @@ interface Obsah {
    * nepíše „Interní systém" a vyká.
    */
   proKlienta?: boolean;
+  /**
+   * Osobní e-mail od člena týmu z karty klienta (5D, 5. 11. 2026) — není
+   * automatický, odpověď jde tomu, kdo psal.
+   */
+  osobni?: boolean;
 }
 
 /** Věta o tom, odkud zpráva je. Tým tyká, klientům se vyká. */
 function patickaSystemu(obsah: Obsah): string {
+  if (obsah.osobni) return `${ZNACKA}. Na tento e-mail můžete rovnou odpovědět.`;
   return obsah.proKlienta
     ? `Klientská část ${ZNACKA}. Tuto zprávu posílá systém automaticky — neodpovídejte na ni.`
     : `Interní systém ${ZNACKA}. Tuto zprávu posílá systém automaticky — neodpovídej na ni.`;
@@ -113,14 +121,37 @@ function patickaSystemu(obsah: Obsah): string {
 
 function rozvrzeni(obsah: Obsah, firma: FirmaVEmailu): string {
   const zaklad = zakladniAdresa();
-  const odkaz = bezpecne(obsah.tlacitko.odkaz);
+  const odkaz = obsah.tlacitko ? bezpecne(obsah.tlacitko.odkaz) : "";
 
   const odstavce = obsah.odstavce
     .map(
       (o) =>
-        `<p style="margin:0 0 16px;font-size:15px;line-height:1.65;color:${BARVY.text};">${bezpecne(o)}</p>`,
+        `<p style="margin:0 0 16px;font-size:15px;line-height:1.65;color:${BARVY.text};">${bezpecne(o).replace(/\r?\n/g, "<br>")}</p>`,
     )
     .join("");
+
+  // Tlačítko a jeho adresa textem — osobní e-mail z karty je nemá.
+  const tlacitko = obsah.tlacitko
+    ? `<!-- Tlačítko. Postavené na tabulce, aby ho vykreslil i Outlook. -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:26px 0 18px;">
+                    <tr>
+                      <td align="center" bgcolor="${BARVY.tlacitko}" style="border-radius:8px;">
+                        <a href="${odkaz}"
+                           style="display:inline-block;padding:14px 28px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;color:${BARVY.tlacitkoText};text-decoration:none;border-radius:8px;">${bezpecne(obsah.tlacitko.popisek)}</a>
+                      </td>
+                    </tr>
+                  </table>`
+    : "";
+  const odkazTextem = obsah.tlacitko
+    ? `<!-- Odkaz i v textové podobě: tlačítka někdy nejdou kliknout. -->
+                  <p style="margin:0 0 6px;font-size:12px;color:${BARVY.tichy};">Kdyby tlačítko nefungovalo, otevři tuto adresu:</p>
+                  <p style="margin:0;font-size:12px;line-height:1.5;word-break:break-all;">
+                    <a href="${odkaz}" style="color:${BARVY.neonSvetly};text-decoration:underline;">${odkaz}</a>
+                  </p>`
+    : "";
+  const nadpis = obsah.nadpis
+    ? `<h1 style="margin:0 0 18px;font-size:22px;line-height:1.3;font-weight:bold;color:${BARVY.nadpis};">${bezpecne(obsah.nadpis)}</h1>`
+    : "";
 
   const podpis = firma.podpis
     ? `<p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:${BARVY.text};">${bezpecne(firma.podpis).replace(/\r?\n/g, "<br>")}</p>`
@@ -133,7 +164,7 @@ function rozvrzeni(obsah: Obsah, firma: FirmaVEmailu): string {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark">
 <meta name="supported-color-schemes" content="dark">
-<title>${bezpecne(obsah.nadpis)}</title>
+<title>${bezpecne(obsah.nadpis || ZNACKA)}</title>
 </head>
 <body style="margin:0;padding:0;background:${BARVY.pozadi};">
 
@@ -181,19 +212,11 @@ function rozvrzeni(obsah: Obsah, firma: FirmaVEmailu): string {
               <tr>
                 <td style="padding:30px 32px 28px;">
 
-                  <h1 style="margin:0 0 18px;font-size:22px;line-height:1.3;font-weight:bold;color:${BARVY.nadpis};">${bezpecne(obsah.nadpis)}</h1>
+                  ${nadpis}
 
                   ${odstavce}
 
-                  <!-- Tlačítko. Postavené na tabulce, aby ho vykreslil i Outlook. -->
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:26px 0 18px;">
-                    <tr>
-                      <td align="center" bgcolor="${BARVY.tlacitko}" style="border-radius:8px;">
-                        <a href="${odkaz}"
-                           style="display:inline-block;padding:14px 28px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;color:${BARVY.tlacitkoText};text-decoration:none;border-radius:8px;">${bezpecne(obsah.tlacitko.popisek)}</a>
-                      </td>
-                    </tr>
-                  </table>
+                  ${tlacitko}
 
                   ${
                     obsah.poznamka
@@ -204,11 +227,7 @@ function rozvrzeni(obsah: Obsah, firma: FirmaVEmailu): string {
                   <!-- Podpis z Nastavení -->
                   ${podpis}
 
-                  <!-- Odkaz i v textové podobě: tlačítka někdy nejdou kliknout. -->
-                  <p style="margin:0 0 6px;font-size:12px;color:${BARVY.tichy};">Kdyby tlačítko nefungovalo, otevři tuto adresu:</p>
-                  <p style="margin:0;font-size:12px;line-height:1.5;word-break:break-all;">
-                    <a href="${odkaz}" style="color:${BARVY.neonSvetly};text-decoration:underline;">${odkaz}</a>
-                  </p>
+                  ${odkazTextem}
 
                   ${
                     obsah.patka
@@ -250,11 +269,9 @@ function rozvrzeni(obsah: Obsah, firma: FirmaVEmailu): string {
 /** Textová podoba téže zprávy. */
 function prostyText(obsah: Obsah, firma: FirmaVEmailu): string {
   return [
-    obsah.nadpis,
-    "",
+    ...(obsah.nadpis ? [obsah.nadpis, ""] : []),
     ...obsah.odstavce.flatMap((o) => [o, ""]),
-    `${obsah.tlacitko.popisek}:`,
-    obsah.tlacitko.odkaz,
+    ...(obsah.tlacitko ? [`${obsah.tlacitko.popisek}:`, obsah.tlacitko.odkaz] : []),
     ...(obsah.poznamka ? ["", obsah.poznamka] : []),
     ...(firma.podpis ? ["", firma.podpis] : []),
     ...(obsah.patka ? ["", obsah.patka] : []),
@@ -489,6 +506,34 @@ export function upozorneniKlienta(vstup: {
       patka:
         "Tato upozornění si můžete vypnout v klientské části v Mém profilu. Když si tam povolíte oznámení v telefonu, budou chodit tam místo e-mailu.",
       proKlienta: true,
+    },
+    vstup.firma,
+  );
+}
+
+/**
+ * Osobní e-mail od člena týmu z karty klienta (Fáze 5D, 5. 11. 2026).
+ * Text napsal člověk (případně ze šablony) — odstavce se dělí prázdným
+ * řádkem, jednoduché zalomení zůstane. Bez nadpisu a tlačítka, aby
+ * vypadal jako dopis, ne jako oznámení systému. Pod ním podpis z Nastavení.
+ */
+export function osobniEmail(vstup: {
+  predmet: string;
+  text: string;
+  firma: FirmaVEmailu;
+}): Sablona {
+  const odstavce = vstup.text
+    .split(/\r?\n\s*\r?\n/)
+    .map((odstavec) => odstavec.trim())
+    .filter(Boolean);
+  return sestav(
+    vstup.predmet,
+    {
+      nahled: odstavce[0] ?? vstup.predmet,
+      nadpis: "",
+      odstavce,
+      proKlienta: true,
+      osobni: true,
     },
     vstup.firma,
   );

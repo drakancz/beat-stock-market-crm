@@ -5,6 +5,7 @@ import { vyresChyby, zapisChybu, type DruhChyby } from "@/lib/chyby";
 import {
   obnovaHesla,
   obnovaHeslaKlienta,
+  osobniEmail,
   pozvanka,
   pozvankaKlienta,
   upozorneniKlienta,
@@ -135,6 +136,7 @@ async function posliPresSes(
   komu: string,
   sablona: Sablona,
   jmeno: string | null,
+  odpovedNa?: string,
 ): Promise<void> {
   ses ??= new SESv2Client({
     region: n.region,
@@ -150,6 +152,7 @@ async function posliPresSes(
     new SendEmailCommand({
       FromEmailAddress: od,
       Destination: { ToAddresses: [komu] },
+      ...(odpovedNa ? { ReplyToAddresses: [odpovedNa] } : {}),
       ConfigurationSetName: n.konfigurace,
       Content: {
         Simple: {
@@ -169,6 +172,7 @@ async function posliPresSmtp(
   komu: string,
   sablona: Sablona,
   jmeno: string | null,
+  odpovedNa?: string,
 ): Promise<void> {
   prepravka ??= nodemailer.createTransport({
     host: n.host,
@@ -181,6 +185,7 @@ async function posliPresSmtp(
     // Nodemailer jméno zakóduje sám.
     from: jmeno ? { name: jmeno, address: adresaOdesilatele(n.odesilatel) } : n.odesilatel,
     to: komu,
+    ...(odpovedNa ? { replyTo: odpovedNa } : {}),
     subject: sablona.predmet,
     text: sablona.text,
     html: sablona.html,
@@ -209,6 +214,7 @@ async function posli(
   jmeno: string | null,
   druh: DruhChyby,
   kontext: KontextZpravy,
+  odpovedNa?: string,
 ): Promise<VysledekOdeslani> {
   const nastaveni = nactiNastaveniPosty();
   if (!nastaveni) {
@@ -227,8 +233,8 @@ async function posli(
   }
 
   try {
-    if (nastaveni.zpusob === "ses") await posliPresSes(nastaveni, komu, sablona, jmeno);
-    else await posliPresSmtp(nastaveni, komu, sablona, jmeno);
+    if (nastaveni.zpusob === "ses") await posliPresSes(nastaveni, komu, sablona, jmeno, odpovedNa);
+    else await posliPresSmtp(nastaveni, komu, sablona, jmeno, odpovedNa);
 
     // Prošlo — dřívější chyba téže zprávy u téhož člověka je vyřešená.
     await vyresChyby(
@@ -445,5 +451,33 @@ export async function posliUpozorneniKlientovi(vstup: {
     jmeno,
     "email.upozorneni-klienta",
     { clientId: vstup.clientId, spustilId: null },
+  );
+}
+
+/**
+ * Osobní e-mail klientovi z karty (Fáze 5D, Jakub 5. 11. 2026). Volá ho
+ * jen `posliEmailKlientovi()` z `klienti/email-actions.ts`, která ověří
+ * přihlášení, klienta a limit.
+ *
+ * Odesílatel je jméno kolegy a firmy (`Petra Dvořáková | Beat Stock
+ * Market`), adresa zůstává `MAIL_FROM` (jen ta je ověřená v SES).
+ * **Odpověď klienta jde kolegovi** (`Reply-To`), ne na systémovou adresu.
+ */
+export async function posliOsobniEmail(vstup: {
+  komu: string;
+  predmet: string;
+  text: string;
+  autor: { jmeno: string; email: string };
+  clientId: string;
+  spustilId: string;
+}): Promise<VysledekOdeslani> {
+  const { firma, jmeno } = await zNastaveni();
+  return posli(
+    vstup.komu,
+    osobniEmail({ predmet: vstup.predmet, text: vstup.text, firma }),
+    `${vstup.autor.jmeno} | ${jmeno ?? firma.nazev}`,
+    "email.osobni",
+    { clientId: vstup.clientId, spustilId: vstup.spustilId },
+    vstup.autor.email,
   );
 }

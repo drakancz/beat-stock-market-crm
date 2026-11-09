@@ -84,6 +84,9 @@ export type AuditniAkce =
   /// Zpráva od administrátora do klientské části (3A, 4. 10. 2026).
   /// **Bez textu zprávy** — ten je v `client_messages`.
   | "klient.zprava-odeslana"
+  /// Osobní e-mail z karty klienta (5D, 5. 11. 2026). **Bez předmětu
+  /// a textu** — ty jsou v `client_emails`.
+  | "klient.email-odeslan"
   /// Portfolia zmizela 20. 10. 2026 — akce zůstávají kvůli starým záznamům
   /// v Aktivitě, nic nového je nezapisuje.
   | "portfolio.zalozeno"
@@ -118,6 +121,10 @@ export type AuditniAkce =
   | "stitek.zalozen"
   | "stitek.upraven"
   | "stitek.smazan"
+  /// Šablony e-mailů z karty klienta (5D, 5. 11. 2026), jen administrátor.
+  | "sablona-emailu.zalozena"
+  | "sablona-emailu.upravena"
+  | "sablona-emailu.smazana"
   | "slevovy-kod.zalozen"
   | "slevovy-kod.upraven"
   | "slevovy-kod.do-kose"
@@ -277,6 +284,7 @@ export const POPIS_AUDITU: Record<AuditniAkce, string> = {
   "klient.ucet-oznameni": "Klient si změnil upozornění",
   "klient.ucet-export": "Klient si stáhl své údaje",
   "klient.zprava-odeslana": "Zpráva klientovi do klientské části",
+  "klient.email-odeslan": "E-mail klientovi z karty",
   "klient.neni-duplicita": "Potvrzení, že klienti nejsou duplicita",
   "portfolio.zalozeno": "Založení portfolia",
   "portfolio.do-kose": "Smazání portfolia",
@@ -307,6 +315,9 @@ export const POPIS_AUDITU: Record<AuditniAkce, string> = {
   "stitek.zalozen": "Založení štítku",
   "stitek.upraven": "Úprava štítku",
   "stitek.smazan": "Smazání štítku",
+  "sablona-emailu.zalozena": "Založení šablony e-mailu",
+  "sablona-emailu.upravena": "Úprava šablony e-mailu",
+  "sablona-emailu.smazana": "Smazání šablony e-mailu",
   "slevovy-kod.zalozen": "Založení slevového kódu",
   "slevovy-kod.upraven": "Úprava slevového kódu",
   "slevovy-kod.do-kose": "Smazání slevového kódu",

@@ -57,6 +57,9 @@ enum ProductKind {
 enum AttachmentOwner {
   UZIVATEL
   KLIENT
+  /// Materiál ke stažení u lekce kurzu (Jakub, 3. 11. 2026) — jen
+  /// v soukromém úložišti S3 (R2), nikdy u UploadThingu.
+  LEKCE
 }
 
 /// Kde příloha leží (4. 10. 2026). Viz `Attachment.storage`.
@@ -166,6 +169,8 @@ model User {
   zruseneRezervace ConsultationBooking[] @relation("RezervaceZrusil")
   vracenePlatby    Payment[]             @relation("PlatbuVratil")
   vystaveneFaktury Invoice[]             @relation("FakturuVystavil")
+  /// E-maily, které tenhle člověk poslal klientům z karty (5D, 5. 11. 2026).
+  odeslaneEmaily   ClientEmail[]         @relation("EmailOd")
 
   /// Účasti na webinářích, které tenhle administrátor zapsal (3C).
   zapsaneUcasti WebinarAttendance[] @relation("UcastZapsal")
@@ -392,6 +397,9 @@ model Client {
 
   rezervace       ConsultationBooking[]
   vlastniPravidla CustomRuleRun[]
+
+  /// E-maily z karty klienta (5D, 5. 11. 2026).
+  emaily ClientEmail[]
 
   /// Kdo klienta přivedl (Fáze 5A, 15. 10. 2026) — zapíše se jednou, při
   /// první objednávce s kódem doporučitele, a nikdy se nepřepíše. Vidí
@@ -1477,6 +1485,12 @@ model CourseLesson {
   /// Otevře se, až má klient předchozí lekci označenou jako hotovou.
   unlockAfterPrevious Boolean   @default(false)
 
+  /// Ukázková lekce zdarma (Platforma B, Jakub 5. 11. 2026): text a video
+  /// vidí i ten, kdo kurz nemá — přihlášený klient i nepřihlášený
+  /// návštěvník na `/ucet/kurz-zdarma/[id]`. Kvíz, materiály ani
+  /// odškrtnutí ne. Zapíná jen administrátor; s pravidlem odemknutí nejde.
+  freePreview Boolean @default(false)
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -2330,4 +2344,54 @@ model InvoiceCounter {
 
   @@id([prefix, year])
   @@map("invoice_counters")
+}
+
+/// Šablona e-mailu z karty klienta (Fáze 5D, Jakub 5. 11. 2026).
+///
+/// - **Zakládá, mění a maže jen administrátor** (Nastavení → Šablony
+///   e-mailů), použít ji smí každý přihlášený.
+/// - V předmětu i textu jde napsat `{jmeno}` — doplní se celé jméno klienta.
+/// - Smazání jen vyplní `deletedAt` (do obrazovky Smazané nechodí, jako
+///   štítky). **Každý dotaz potřebuje `deletedAt: null`.**
+model EmailTemplate {
+  id      String @id @default(cuid())
+  name    String @db.VarChar(80)
+  subject String @db.VarChar(200)
+  body    String @db.Text
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@map("email_templates")
+}
+
+/// Osobní e-mail klientovi z karty (Fáze 5D, Jakub 5. 11. 2026).
+///
+/// - **Poslat smí každý přihlášený**, i klientovi bez souhlasu s marketingem
+///   (je to osobní zpráva, ne kampaň — okno na chybějící souhlas upozorní).
+/// - Historii vidí každý, kdo vidí kartu; klient ji najde v Mých údajích.
+/// - Adresa příjemce se neukládá (je na kartě). Do auditu jde jen to, že
+///   e-mail odešel, ne předmět ani text (pravidlo 8).
+/// - Otevření se zatím nesleduje (Jakub 5. 11. 2026 — až se SES).
+model ClientEmail {
+  id String @id @default(cuid())
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  authorId String?
+  author   User?   @relation("EmailOd", fields: [authorId], references: [id], onDelete: SetNull)
+
+  subject String @db.VarChar(200)
+  body    String @db.Text
+
+  /// `ODESLANO`, nebo `NEODESLANO` (pošta nenastavená, selhala, ukázka).
+  status String @db.VarChar(20)
+
+  createdAt DateTime @default(now())
+
+  @@index([clientId, createdAt])
+  @@index([authorId, createdAt])
+  @@map("client_emails")
 }

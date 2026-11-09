@@ -131,6 +131,13 @@ export async function nactiMojeUdaje(
           orderBy: { createdAt: "asc" },
           select: { text: true, createdAt: true, readAt: true },
         },
+        // E-maily z karty (5D, 5. 11. 2026) — jen ty, které klientovi opravdu
+        // přišly. Kdo z týmu psal, je interní věc a do souboru nejde.
+        emaily: {
+          where: { status: "ODESLANO" },
+          orderBy: { createdAt: "asc" },
+          select: { subject: true, body: true, createdAt: true },
+        },
       },
     }),
     db.clientAccount.findUnique({
@@ -338,6 +345,15 @@ export async function nactiMojeUdaje(
         Zpráva: z.text,
         Odesláno: cas(z.createdAt),
         Přečteno: cas(z.readAt),
+      })),
+    },
+    {
+      nazev: "E-maily od nás",
+      jeden: false,
+      zaznamy: klient.emaily.map((e) => ({
+        Předmět: e.subject,
+        Text: e.body,
+        Odesláno: cas(e.createdAt),
       })),
     },
   ];

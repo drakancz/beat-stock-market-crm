@@ -1,7 +1,14 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
-import { prihlasKlienta, prohlizecKlienta, zalozKlientaSUctem } from "./pomocne-klient";
+import {
+  lekceKurzu,
+  prihlasKlienta,
+  prohlizecKlienta,
+  zalozKlientaSUctem,
+  zalozKurz,
+  zalozProdukt,
+} from "./pomocne-klient";
 import { dotaz, jeMobil, pripona, stavPrihlaseni } from "./pomocne";
 
 /**
@@ -30,6 +37,8 @@ const OBRAZOVKY_TYMU = [
   "/smazane",
   "/smartemailing",
   "/nastaveni",
+  // Šablony e-mailů z karty klienta (5D, 5. 11. 2026).
+  "/nastaveni/sablony",
   "/profil",
 ];
 
@@ -199,6 +208,24 @@ test.describe("bez přihlášení", () => {
       expect(await chybyPristupnosti(page, adresa)).toEqual([]);
     });
   }
+
+  // Minikurz zdarma (Platforma B, 5. 11. 2026) — veřejná ukázka kurzu.
+  test("/ucet/kurz-zdarma projde kontrolou přístupnosti", { tag: "@telefon" }, async ({ page }) => {
+    const produkt = await zalozProdukt(
+      `E2E Přístupnost ukázky ${pripona()}`,
+      "KURZ",
+      "https://example.com/kurz",
+    );
+    const kurzId = await zalozKurz(produkt, `Ukázka přístupnost ${pripona()}`, [
+      "Placená s videem",
+      "Zdarma",
+    ]);
+    // Zdarma je druhá lekce, bez videa — přehrávač YouTube má vlastní chyby
+    // ARIA, které opravit nejde (lekce s videem tu nekontrolujeme ani jinde).
+    const [, zdarma] = await lekceKurzu(kurzId);
+    await dotaz(`UPDATE "course_lessons" SET "freePreview" = true WHERE "id" = $1`, [zdarma]);
+    expect(await chybyPristupnosti(page, `/ucet/kurz-zdarma/${kurzId}`)).toEqual([]);
+  });
 });
 
 test("klientská část projde kontrolou přístupnosti", { tag: "@telefon" }, async ({ browser }) => {

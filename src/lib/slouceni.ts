@@ -113,6 +113,8 @@ export async function sloucKlienty(
   await tx.integrationError.updateMany({ where: odkud, data: kam });
   // Zprávy klientovi (3A, 4. 10. 2026) — co klient dostal, patří k němu.
   await tx.clientMessage.updateMany({ where: odkud, data: kam });
+  // E-maily z karty (5D, 5. 11. 2026) — historie patří ke klientovi.
+  await tx.clientEmail.updateMany({ where: odkud, data: kam });
 
   // Vzdělávání (3C, 4. 10. 2026): hotové lekce, účast na webinářích,
   // odznaky a aktivní týdny. Co už má zůstávající karta, se u sloučené

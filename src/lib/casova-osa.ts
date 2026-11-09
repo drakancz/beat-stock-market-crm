@@ -218,48 +218,70 @@ async function objednavky(clientId: string, pred: Date): Promise<Surova[]> {
 /* ---------- Tým: poznámky, úkoly ---------- */
 
 async function tym(clientId: string, pred: Date): Promise<Surova[]> {
-  const [poznamky, zalozeneUkoly, hotoveUkoly, pravidla, vlastniPravidla] = await Promise.all([
-    db.clientNote.findMany({
-      where: { clientId, deletedAt: null, createdAt: { lt: pred } },
-      orderBy: { createdAt: "desc" },
-      take: LIMIT,
-      select: { id: true, text: true, createdAt: true, author: { select: { name: true } } },
-    }),
-    db.task.findMany({
-      where: { clientId, deletedAt: null, createdAt: { lt: pred } },
-      orderBy: { createdAt: "desc" },
-      take: LIMIT,
-      select: {
-        id: true,
-        title: true,
-        dueAt: true,
-        createdAt: true,
-        user: { select: { name: true } },
-      },
-    }),
-    db.task.findMany({
-      where: { clientId, deletedAt: null, doneAt: { lt: pred } },
-      orderBy: { doneAt: "desc" },
-      take: LIMIT,
-      select: { id: true, title: true, doneAt: true, user: { select: { name: true } } },
-    }),
-    // Co klientovi udělalo pravidlo „když X, udělej Y“ (5D, 18. 10. 2026).
-    db.automationRun.findMany({
-      where: { clientId, createdAt: { lt: pred } },
-      orderBy: { createdAt: "desc" },
-      take: LIMIT,
-      select: { id: true, ruleId: true, detail: true, createdAt: true },
-    }),
-    // Vlastní pravidla (19. 10. 2026) — `detail` je název pravidla.
-    db.customRuleRun.findMany({
-      where: { clientId, createdAt: { lt: pred } },
-      orderBy: { createdAt: "desc" },
-      take: LIMIT,
-      select: { id: true, detail: true, createdAt: true },
-    }),
-  ]);
+  const [poznamky, zalozeneUkoly, hotoveUkoly, pravidla, vlastniPravidla, emaily] =
+    await Promise.all([
+      db.clientNote.findMany({
+        where: { clientId, deletedAt: null, createdAt: { lt: pred } },
+        orderBy: { createdAt: "desc" },
+        take: LIMIT,
+        select: { id: true, text: true, createdAt: true, author: { select: { name: true } } },
+      }),
+      db.task.findMany({
+        where: { clientId, deletedAt: null, createdAt: { lt: pred } },
+        orderBy: { createdAt: "desc" },
+        take: LIMIT,
+        select: {
+          id: true,
+          title: true,
+          dueAt: true,
+          createdAt: true,
+          user: { select: { name: true } },
+        },
+      }),
+      db.task.findMany({
+        where: { clientId, deletedAt: null, doneAt: { lt: pred } },
+        orderBy: { doneAt: "desc" },
+        take: LIMIT,
+        select: { id: true, title: true, doneAt: true, user: { select: { name: true } } },
+      }),
+      // Co klientovi udělalo pravidlo „když X, udělej Y“ (5D, 18. 10. 2026).
+      db.automationRun.findMany({
+        where: { clientId, createdAt: { lt: pred } },
+        orderBy: { createdAt: "desc" },
+        take: LIMIT,
+        select: { id: true, ruleId: true, detail: true, createdAt: true },
+      }),
+      // Vlastní pravidla (19. 10. 2026) — `detail` je název pravidla.
+      db.customRuleRun.findMany({
+        where: { clientId, createdAt: { lt: pred } },
+        orderBy: { createdAt: "desc" },
+        take: LIMIT,
+        select: { id: true, detail: true, createdAt: true },
+      }),
+      // E-maily z karty (5D, 5. 11. 2026) — jen předmět, text je v okně Poslat email.
+      db.clientEmail.findMany({
+        where: { clientId, createdAt: { lt: pred } },
+        orderBy: { createdAt: "desc" },
+        take: LIMIT,
+        select: {
+          id: true,
+          subject: true,
+          status: true,
+          createdAt: true,
+          author: { select: { name: true } },
+        },
+      }),
+    ]);
 
   return [
+    ...emaily.map((email) => ({
+      id: `email-${email.id}`,
+      druh: "tym" as const,
+      kdy: email.createdAt,
+      nadpis: `E-mail: ${email.subject}`,
+      popis: email.status === "ODESLANO" ? null : "Neodesláno",
+      kdo: email.author?.name ?? null,
+    })),
     ...vlastniPravidla.map((provedeno) => ({
       id: `vlastni-pravidlo-${provedeno.id}`,
       druh: "tym" as const,

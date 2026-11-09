@@ -30,7 +30,9 @@ import { odpovedJson as odpoved } from "@/lib/verejne-api";
 export const dynamic = "force-dynamic";
 
 const parametry = z.object({
-  typ: z.enum(["UZIVATEL", "KLIENT"]),
+  // LEKCE = materiál ke stažení u lekce (3. 11. 2026) — jen sem, do S3,
+  // nikdy přes UploadThing (`/api/uploadthing` ho nepřijme).
+  typ: z.enum(["UZIVATEL", "KLIENT", "LEKCE"]),
   id: z.string().trim().min(1).max(64),
 });
 

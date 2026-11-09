@@ -7,6 +7,7 @@ import { zahesluj } from "@/lib/hesla";
 import { opisDelkuPlatnosti, prepocitejPlatnost } from "@/lib/platnost";
 import { UKAZKOVY_KLIENT, UKAZKOVY_TYM } from "@/lib/ukazka";
 import { UKAZKOVE_CLANKY, UKAZKOVE_KURZY, UKAZKOVE_WEBINARE } from "@/lib/ukazka-obsah";
+import { pridejUkazkoveMaterialy } from "@/lib/vzdelavani/materialy-ukazky";
 import { isoTyden } from "@/lib/vzdelavani/odznaky";
 import { naplnZakladniData } from "@/lib/ukazka-zaklad";
 
@@ -558,6 +559,7 @@ export async function naplnUkazku() {
           title: lekce.title,
           body: lekce.body,
           position: poradi + 1,
+          freePreview: lekce.zdarma ?? false,
           ...(lekce.kviz ? { kviz: { create: { questions: lekce.kviz } } } : {}),
         },
       });
@@ -566,6 +568,13 @@ export async function naplnUkazku() {
     }
     lekceKurzu.set(kurz.produkt, ids);
   }
+
+  // Materiály ke stažení u tří lekcí Základů (3. 11. 2026) — vymyšlená PDF
+  // do S3; bez S3 se nevytvoří. Nahrávání je v ukázce vypnuté.
+  const materialu = await pridejUkazkoveMaterialy(
+    lekceKurzu.get("Kurz Základy investování") ?? [],
+    tym.id,
+  );
 
   // Eva má za sebou první lekci Základů — ať je vidět postup a odznak.
   // Další je lekce s kvízem, takže „Pokračovat“ vede rovnou na krok
@@ -818,5 +827,5 @@ export async function naplnUkazku() {
     },
   });
 
-  return { klientu: KLIENTI.length, faktur: zaplacene.length, lekci };
+  return { klientu: KLIENTI.length, faktur: zaplacene.length, lekci, materialu };
 }

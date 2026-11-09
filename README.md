@@ -4,9 +4,9 @@
 Objednávky chodí z webu, tým je vyřizuje v CRM a klienti mají vlastní
 aplikaci v telefonu s kurzy, členskou sekcí a oznámeními.
 
-**Vyzkoušejte si to:** [živá ukázka CRM](https://crm.jakubkostan.cz/prihlaseni) · [Landing Page napojená na CRM](https://landing.jakubkostan.cz/) · [její kód](https://github.com/drakancz/beat-stock-market-landing-page)
-
 Next.js 16 · React 19 · TypeScript · PostgreSQL · Prisma · Playwright · Docker
+
+**Vyzkoušejte si to:** [živá ukázka CRM](https://crm.jakubkostan.cz/prihlaseni) · [Landing Page napojená na CRM](https://landing.jakubkostan.cz/) · [její kód](https://github.com/drakancz/beat-stock-market-landing-page)
 
 | CRM pro tým                                     | Klientská aplikace na telefonu                    |
 | ----------------------------------------------- | ------------------------------------------------- |
@@ -17,7 +17,7 @@ Next.js 16 · React 19 · TypeScript · PostgreSQL · Prisma · Playwright · Do
 > **In English:** A production CRM and client-facing PWA for a company
 > selling investment education — orders from the website, team workflow,
 > memberships, courses with badges and push notifications. Next.js 16,
-> React 19, TypeScript, PostgreSQL/Prisma, 320+ Playwright tests (570 runs
+> React 19, TypeScript, PostgreSQL/Prisma, 370+ Playwright tests (660+ runs
 > across three browsers) in GitHub Actions against the production build,
 > deployed on Railway, with a built-in demo mode for visitors — sign-in,
 > demo banner and a guided tour are available in English. **The code was written by AI
@@ -74,6 +74,9 @@ Next.js 16 · React 19 · TypeScript · PostgreSQL · Prisma · Playwright · Do
 - **Faktury a dobropisy v PDF a export do účetnictví (Pohoda)** — číslo
   dokladu přiděluje databáze, vystavený doklad se nemění ani nemaže,
   oprava jde jen dobropisem; bez IČO a sídla firmy se doklad nevystaví.
+- **E-mail klientovi přímo z karty** se šablonami, které spravuje
+  administrátor; odpověď jde kolegovi, který psal, do auditu jde jen to,
+  že e-mail odešel (bez předmětu a textu), a platí limit na hodinu.
 - **Konzultace v Google Kalendáři** — rezervace se zapíše do firemního
   kalendáře servisním účtem, bez e-mailu a telefonu klienta.
 - **Automatické připomínky** nezaplacené objednávky a webinářů, spouští
@@ -113,6 +116,9 @@ Next.js 16 · React 19 · TypeScript · PostgreSQL · Prisma · Playwright · Do
   údajů v PDF k přečtení a v JSON k přenesení jinam; interní poznámky
   týmu do ní nejdou.
 - **Kvíz na konci lekce a certifikát v PDF** po dokončení kurzu.
+- **Materiály ke stažení u lekcí** (soukromé úložiště, stahuje jen klient
+  s přístupem) a **minikurz zdarma** — vybrané lekce si zájemce projde
+  bez nákupu a přihlášení, ostatní vidí jen názvem.
 - **Postupné odemykání lekcí** (po dnech od nákupu, k datu, po předchozí
   lekci), **hodnocení lekce** hvězdičkami a **body, úrovně a pořadí** —
   za vzdělávání, nikdy za obchody, pořadí bez jmen ostatních klientů.
@@ -129,7 +135,7 @@ Next.js 16 · React 19 · TypeScript · PostgreSQL · Prisma · Playwright · Do
 | Služby     | Amazon SES, Web Push, S3 / Cloudflare R2, Sentry              |
 | Testy      | Playwright — 370+ testů v Chrome, Android a iPhone Safari     |
 | CI         | GitHub Actions — celá sada u každého PR, produkční sestavení  |
-| Provoz     | Docker, Railway, plánovaná služba (cron)                      |
+| Provoz     | Docker, Railway, plánovaná služba (cron), noční zálohy do R2  |
 
 ## Zajímavá technická rozhodnutí
 
@@ -167,6 +173,12 @@ Next.js 16 · React 19 · TypeScript · PostgreSQL · Prisma · Playwright · Do
   vznikne nová epizoda samo. Test pravidel přitom odhalil starší chybu:
   podmínka `NOT (návštěva >= hranice)` nad prázdnou návštěvou dala v SQL
   „nevím“ a klient, který ještě nikdy nepřišel, z filtru vypadl.
+- **Automatické noční zálohy, které server sám nepřečte.** Každou noc
+  vznikne záloha databáze, zašifruje se **veřejným** klíčem a uloží do
+  úložiště v EU (Cloudflare R2, drží se 30 dní). Soukromý klíč na serveru
+  ani v repozitáři není — kdo by se k serveru nebo úložišti dostal,
+  zálohu nerozšifruje. Obnova se vyzkoušela naostro: stažení z R2,
+  rozšifrování a kontrola, že jsou v záloze všechny tabulky s daty.
 - **Mazání dat se zkouší nanečisto.** Migrace, která něco maže (zrušené
   hovory, portfolia), se před nasazením pustí na kopii databáze ve stavu
   jako na serveru, s vymyšlenými daty právě toho druhu, a kontroluje se,
@@ -226,6 +238,9 @@ otestovaná a udržovatelná.**
 - **Oprávnění a pravidla.** U každé nové obrazovky jsem rozhodl, kdo ji
   smí vidět a měnit — AI se musela zeptat, nesměla to domýšlet.
 - **Pravidla vývoje**, která AI dodržovala (níž).
+- **Řízení podle přehledu.** Každé ráno jedna stránka se stavem všech
+  projektů — fáze, kroky, co je hotové, co čeká na mě a co na AI. Stav se
+  ověřuje v gitu a v kódu, ne podle poznámek z minula.
 - **Kontrola změn** v prohlížeči na počítači i na telefonu,
   hlášení chyb a připomínek (tlačítko navíc, jiné chování, vzhled).
 - **Provoz:** nasazení na Railway, hlídání každého nasazení, Sentry,
@@ -248,7 +263,7 @@ otestovaná a udržovatelná.**
 - **Do produkce jen přes pull request** se zelenými testy z GitHub
   Actions a po každém nasazení kontrola logů a stavu serveru.
 
-**V číslech:** 300+ commitů za srpen–listopad 2026, 7 fází, 370+
+**V číslech:** 380+ commitů za srpen–listopad 2026, 7 fází, 370+
 automatických testů (660+ běhů ve třech prohlížečích).
 
 ## Autor

@@ -11,6 +11,8 @@ export interface UkazkovaLekce {
   title: string;
   body: string;
   kviz?: { otazka: string; moznosti: string[]; spravna: number }[];
+  /** Ukázková lekce zdarma (Platforma B, 5. 11. 2026) — veřejná ukázka kurzu. */
+  zdarma?: boolean;
 }
 
 export interface UkazkovyKurz {
@@ -21,8 +23,7 @@ export interface UkazkovyKurz {
   lekce: UkazkovaLekce[];
 }
 
-const UPOZORNENI =
-  "Obsah je vzdělávací a vymyšlený pro ukázku. Nejde o investiční doporučení.";
+const UPOZORNENI = "Obsah je vzdělávací a vymyšlený pro ukázku. Nejde o investiční doporučení.";
 
 export const UKAZKOVE_KURZY: UkazkovyKurz[] = [
   {
@@ -33,6 +34,7 @@ export const UKAZKOVE_KURZY: UkazkovyKurz[] = [
     lekce: [
       {
         title: "Co je akcie a jak funguje burza",
+        zdarma: true,
         body: `Akcie je malý podíl na firmě. Kdo ji vlastní, má nárok na část zisku (pokud ho firma vyplácí jako dividendu) a může hlasovat na valné hromadě.
 
 Burza je místo, kde se kupující a prodávající potkávají. Cena akcie není „správná“ ani „špatná“ — je to poslední cena, za kterou se někdo s někým dohodl.
@@ -118,6 +120,7 @@ ${UPOZORNENI}`,
     lekce: [
       {
         title: "Svíčkový graf",
+        zdarma: true,
         body: `Každá „svíčka“ ukazuje jedno období: cenu na začátku, na konci, nejvyšší a nejnižší.
 
 Tělo svíčky je rozdíl mezi začátkem a koncem, knoty ukazují, kam se cena během období dostala.

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BookOpen, ExternalLink } from "lucide-react";
+import { BookOpen, ExternalLink, PlayCircle } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireKlient } from "@/lib/klient/sezeni";
@@ -67,6 +67,16 @@ export default async function KurzyKlientaPage() {
               {ostatni.map((kurz) => (
                 <li key={kurz.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
                   <span className="min-w-0 flex-1 font-medium">{kurz.title}</span>
+                  {kurz.ukazkaZdarma && (
+                    // Minikurz zdarma (Platforma B, 5. 11. 2026).
+                    <Link
+                      href={`/ucet/kurz-zdarma/${kurz.id}`}
+                      className="text-primary inline-flex min-h-6 items-center gap-1 font-medium underline-offset-4 hover:underline"
+                    >
+                      <PlayCircle className="size-3.5" aria-hidden />
+                      Ukázka zdarma
+                    </Link>
+                  )}
                   {kurz.productId && (
                     <Link
                       href={`/ucet/koupit?produkt=${kurz.productId}`}

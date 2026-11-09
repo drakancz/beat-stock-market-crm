@@ -45,7 +45,7 @@ printf 'stara' >"$PRACOVNI/stara"
 s3 s3 cp --only-show-errors "$PRACOVNI/stara" "s3://$ZALOHY_S3_BUCKET/$STARA"
 
 # 2. Skutečný skript zálohy.
-sh /skripty/zaloha-automaticka.sh | tee "$PRACOVNI/vystup"
+sh /zaloha/zaloha-automaticka.sh | tee "$PRACOVNI/vystup"
 NAZEV=$(sed -nE 's#^Nahráno: +s3://[^/]+/(.*)$#\1#p' "$PRACOVNI/vystup")
 [ -n "$NAZEV" ] || chyba "Skript nevypsal, kam zálohu nahrál."
 
